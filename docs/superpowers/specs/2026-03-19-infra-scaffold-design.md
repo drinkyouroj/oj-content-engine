@@ -10,14 +10,15 @@ is the base that all subsequent feature branches build on.
 
 ## Decisions Made
 
-| Decision | Choice | Rationale |
-|----------|--------|-----------|
-| Python version | 3.12 | User preference |
-| Migration tool | Alembic | Autogenerate from SQLAlchemy models, proper up/down |
-| ORM | SQLAlchemy (full async ORM) | Alembic autogenerate, Pythonic queries, handles JSONB well |
-| Worker host | Railway | User preference |
-| Local dev DB | External only (Neon + Upstash) | No local Postgres/Redis containers; dev against real services |
-| ARQ scaffold | Minimal (config + 1 example job) | Avoids merge conflicts when parallel branches register jobs |
+| Decision | Choice | Rationale | Decision Doc |
+|----------|--------|-----------|--------------|
+| Python version | 3.12 | User preference | — |
+| Migration tool | Alembic | Autogenerate from SQLAlchemy models, proper up/down | — |
+| ORM | SQLAlchemy (full async ORM) | Alembic autogenerate, Pythonic queries, handles JSONB well | `docs/decisions/003-sqlalchemy-orm.md` |
+| Worker host | Railway | User preference | — |
+| Local dev DB | External only (Neon + Upstash) | No local containers; dev against real services | `docs/decisions/004-no-local-dev-containers.md` |
+| ARQ scaffold | Minimal (config + 1 example job) | Avoids merge conflicts when parallel branches register jobs | — |
+| Column types | ENUM over TEXT for constrained values | Type safety at DB level; PRD uses TEXT but ENUMs prevent invalid data | — |
 
 ## Directory Structure
 
@@ -47,6 +48,7 @@ worker/
 │   ├── __init__.py
 │   ├── worker.py                        # ARQ WorkerSettings + example job
 │   └── README.md
+├── app/README.md                        # App module overview
 ├── conftest.py                          # Shared pytest fixtures
 ├── alembic.ini
 ├── pyproject.toml
@@ -87,11 +89,25 @@ Signals after two-pass scoring.
 |--------|------|-------------|-------------|
 | `id` | UUID | PK | |
 | `signal_id` | UUID | FK → signals.id, NOT NULL | |
-| `score_breakdown` | JSONB | NOT NULL | Per-dimension scores |
+| `score_breakdown` | JSONB | NOT NULL | Per-dimension scores (see structure below) |
 | `composite_score` | NUMERIC | NOT NULL | Weighted composite 0-100 |
 | `status` | ENUM | NOT NULL, DEFAULT 'pending' | pending, scored, failed |
 | `pass1_completed_at` | TIMESTAMPTZ | | Rule-based pass |
 | `pass2_completed_at` | TIMESTAMPTZ | | LLM pass |
+
+**`score_breakdown` JSONB structure** (PRD Section 3, all values 0-100):
+```json
+{
+  "signal_strength": 70,
+  "timing_window": 50,
+  "depth_potential": 80,
+  "novelty": 60,
+  "community_resonance": 40,
+  "brand_angle_availability": 85
+}
+```
+Application-level validation ensures all 6 keys are present before setting
+`status` to `scored`.
 
 ### `topics` (PRD Section 3, 3.5)
 
@@ -101,7 +117,7 @@ Triaged topics awaiting thesis injection and/or generation.
 |--------|------|-------------|-------------|
 | `id` | UUID | PK | |
 | `scored_signal_id` | UUID | FK → scored_signals.id, NOT NULL | |
-| `status` | ENUM | NOT NULL | queued, review, generating, generated, snoozed, archived |
+| `status` | ENUM | NOT NULL | queued, review, generating, generated, snoozed, archived, killed |
 | `thesis` | TEXT | | Justin's 2-3 sentence take |
 | `thesis_provided` | BOOLEAN | DEFAULT false | |
 | `queued_at` | TIMESTAMPTZ | | |
@@ -209,8 +225,16 @@ Runs both processes in the same container:
 ```bash
 uvicorn worker.app.main:app --host 0.0.0.0 --port ${PORT:-8000} &
 python -m arq worker.jobs.worker.WorkerSettings &
-wait
+wait -n  # Exit if either process dies (bash 4.3+)
 ```
+
+### Redis Client Clarification
+
+- **ARQ**: Uses its own `arq.connections.RedisSettings` (standard Redis protocol) →
+  connects to Upstash via `ARQ_REDIS_URL`
+- **Upstash REST API**: Uses `httpx` for HTTP-based Redis access from Vercel-layer
+  code. The `redis` package is not needed — removed from runtime deps.
+- **Health check**: Uses `arq.connections.create_pool` to verify Redis connectivity
 
 ## Docker
 
@@ -232,9 +256,11 @@ Single `worker` service:
 
 - `pytest` + `pytest-asyncio` in dev deps
 - `worker/app/test_main.py`: tests `/health` endpoint with mocked DB/Redis
+- `worker/app/models/test_models.py`: validates model instantiation, enum values, timestamp mixin
 - `worker/jobs/test_worker.py`: tests example ping job runs
 - `worker/conftest.py`: shared async fixtures
-- No integration tests (deferred to Task 20, Wave 5)
+- `pyproject.toml` configures `testpaths = ["app", "jobs"]` for pytest discovery
+- No integration tests (deferred to Task 20, Wave 5; will add `testcontainers` as dev dep then)
 
 ## Dependencies (`pyproject.toml`)
 
@@ -245,7 +271,6 @@ Single `worker` service:
 - `asyncpg`
 - `alembic`
 - `arq`
-- `redis`
 - `pydantic-settings`
 - `httpx`
 
@@ -253,6 +278,15 @@ Single `worker` service:
 - `pytest`
 - `pytest-asyncio`
 - `ruff` (linting)
+
+## Deliverables Checklist
+
+- [ ] All files in directory structure above
+- [ ] Alembic migration with all 7 tables
+- [ ] Decision docs: `003-sqlalchemy-orm.md`, `004-no-local-dev-containers.md`
+- [ ] Update `.env.example` with any new env vars (none expected beyond existing)
+- [ ] Update `CHANGELOG.md` `[Unreleased]` section
+- [ ] All tests passing
 
 ## What This Does NOT Include
 
