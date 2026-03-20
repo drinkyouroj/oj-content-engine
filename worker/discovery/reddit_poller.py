@@ -1,11 +1,16 @@
 """
-Reddit JSON API poller for trend discovery.
+Reddit RSS feed poller for trend discovery.
 
 Implements PRD Section 2 (Trend Discovery Layer — Reddit source).
-Polls the public Reddit JSON API for hot posts from configured subreddits
+Polls Reddit's public RSS feeds for hot posts from configured subreddits
 related to DePIN, crypto infrastructure, AI tooling, and self-hosting.
 
-Inputs: Public Reddit JSON API (no auth required for read-only).
+Uses RSS (Atom) feeds instead of the JSON API because Reddit's JSON API
+now requires Devvit app registration. RSS feeds are publicly accessible,
+provide titles, links, timestamps, and summaries — sufficient for trend
+discovery. We lose upvote/comment counts but can still detect signals.
+
+Inputs: Reddit public RSS feeds (no auth required).
 Outputs: RawSignal instances with source=REDDIT persisted to the signals table.
 """
 
@@ -15,6 +20,7 @@ import logging
 from datetime import datetime, timezone
 from typing import ClassVar
 
+import feedparser
 import httpx
 
 from worker.app.models.signal import SignalSource
@@ -25,15 +31,17 @@ logger = logging.getLogger(__name__)
 #: Default subreddits aligned with drinkYourOJ brand topics
 DEFAULT_SUBREDDITS: list[str] = ["depin", "cryptocurrency", "singularity", "selfhosted"]
 
-#: User-Agent header required by Reddit API guidelines
+#: User-Agent header required by Reddit guidelines
 REDDIT_USER_AGENT = "oj-content-engine/0.1.0 (trend-discovery-bot)"
 
 
 class RedditPoller(BasePoller):
-    """Poller for Reddit hot posts via the public JSON API.
+    """Poller for Reddit hot posts via public RSS feeds.
 
-    Fetches the top 25 hot posts from each configured subreddit and
-    computes a velocity metric (upvotes per hour since creation).
+    Fetches the top 25 hot posts from each configured subreddit's RSS feed
+    and converts them into RawSignal instances. RSS feeds do not include
+    upvote or comment counts, so source_metrics contains only what the
+    feed provides (author, subreddit).
 
     Estimated runtime: 2-8s depending on number of subreddits.
     Retry behavior: Handled by ARQ retry settings on the cron job.
@@ -59,7 +67,7 @@ class RedditPoller(BasePoller):
         self._http_client = http_client
 
     async def fetch(self) -> list[RawSignal]:
-        """Fetch hot posts from all configured subreddits.
+        """Fetch hot posts from all configured subreddits via RSS.
 
         Returns:
             List of RawSignal instances from Reddit.
@@ -95,7 +103,7 @@ class RedditPoller(BasePoller):
     async def _fetch_subreddit(
         self, client: httpx.AsyncClient, subreddit: str
     ) -> list[RawSignal]:
-        """Fetch hot posts from a single subreddit.
+        """Fetch hot posts from a single subreddit via RSS.
 
         Args:
             client: httpx async client with proper User-Agent.
@@ -105,54 +113,74 @@ class RedditPoller(BasePoller):
             List of RawSignal instances from this subreddit.
 
         Raises:
-            httpx.HTTPStatusError: If the Reddit API returns a non-2xx response.
+            httpx.HTTPStatusError: If Reddit returns a non-2xx response.
         """
-        url = f"https://www.reddit.com/r/{subreddit}/hot.json?limit=25"
+        url = f"https://www.reddit.com/r/{subreddit}/hot.rss"
         response = await client.get(url)
         response.raise_for_status()
 
-        data = response.json()
-        children = data.get("data", {}).get("children", [])
-
+        feed = feedparser.parse(response.text)
         signals: list[RawSignal] = []
-        now = datetime.now(tz=timezone.utc)
 
-        for child in children:
-            post = child.get("data", {})
-            if not post:
+        for entry in feed.entries:
+            title = entry.get("title", "")
+            link = entry.get("link", "")
+
+            if not title or not link:
                 continue
 
-            title = post.get("title", "")
-            permalink = post.get("permalink", "")
-            selftext = post.get("selftext", "")
-            ups = post.get("ups", 0)
-            num_comments = post.get("num_comments", 0)
-            created_utc = post.get("created_utc", 0)
+            # Parse published timestamp
+            published = entry.get("published", "")
+            if published:
+                try:
+                    created_at = datetime.fromisoformat(published)
+                except (ValueError, TypeError):
+                    created_at = datetime.now(tz=timezone.utc)
+            else:
+                created_at = datetime.now(tz=timezone.utc)
 
-            if not title or not permalink:
-                continue
+            # Extract body preview from summary (HTML content from RSS)
+            summary = entry.get("summary", "")
+            # Strip HTML tags for a rough plain-text preview
+            body_preview = _strip_html(summary)[:500] if summary else None
 
-            post_url = f"https://www.reddit.com{permalink}"
-            created_at = datetime.fromtimestamp(created_utc, tz=timezone.utc)
-
-            # Compute velocity: upvotes per hour since creation
-            hours_since_created = max(
-                (now - created_at).total_seconds() / 3600.0, 0.1
-            )
-            velocity = round(ups / hours_since_created, 2)
+            author = entry.get("author", "")
 
             signals.append(
                 RawSignal(
-                    url=post_url,
+                    url=link,
                     title=title,
-                    body_preview=selftext[:500] if selftext else None,
+                    body_preview=body_preview,
                     discovered_at=created_at,
                     source_metrics={
-                        "upvotes": ups,
-                        "comments": num_comments,
-                        "velocity": velocity,
+                        "subreddit": subreddit,
+                        "author": author,
                     },
                 )
             )
 
         return signals
+
+
+def _strip_html(html: str) -> str:
+    """Remove HTML tags from a string for plain-text preview.
+
+    Simple regex-free approach: walks through the string and drops
+    anything between < and >. Good enough for RSS summary snippets.
+
+    Args:
+        html: HTML string from the RSS feed summary.
+
+    Returns:
+        Plain text with HTML tags removed and whitespace normalized.
+    """
+    in_tag = False
+    chars: list[str] = []
+    for ch in html:
+        if ch == "<":
+            in_tag = True
+        elif ch == ">":
+            in_tag = False
+        elif not in_tag:
+            chars.append(ch)
+    return " ".join("".join(chars).split())
