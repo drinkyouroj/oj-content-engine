@@ -41,24 +41,108 @@ class NotionWriteError(Exception):
     """Raised when a Notion API write fails."""
 
 
-def _split_content(content: str, chunk_size: int) -> list[str]:
-    """
-    Split a long string into chunks no larger than `chunk_size` characters.
+def _content_to_blocks(content: str) -> list[dict]:
+    """Convert article content into structured Notion blocks.
 
-    Notion paragraph blocks are capped at 2 000 characters. This helper ensures
-    content that exceeds that limit is distributed across multiple blocks rather
-    than being truncated or raising an API error.
+    Splits on paragraph boundaries (double newlines) and converts:
+    - Lines starting with ## or # → heading blocks
+    - Lines starting with [IMAGE:, [ALT:, [CAPTION: → callout blocks
+    - Lines starting with TITLE:, SUBTITLE:, TEMPLATE:, SOURCES: → heading blocks
+    - Everything else → paragraph blocks
+
+    Long paragraphs (>2000 chars) are split into multiple paragraph blocks
+    at sentence boundaries.
 
     Args:
-        content: Full text string to split.
-        chunk_size: Maximum characters per chunk.
+        content: Full generated article text.
 
     Returns:
-        List of strings, each at most `chunk_size` characters long.
+        List of Notion block dicts ready for the children parameter.
     """
     if not content:
-        return [""]
-    return [content[i : i + chunk_size] for i in range(0, len(content), chunk_size)]
+        return [_paragraph_block("")]
+
+    blocks: list[dict] = []
+    paragraphs = content.split("\n\n")
+
+    for para in paragraphs:
+        para = para.strip()
+        if not para:
+            continue
+
+        # Headings
+        if para.startswith("### "):
+            blocks.append(_heading_block(para[4:], level=3))
+        elif para.startswith("## "):
+            blocks.append(_heading_block(para[3:], level=2))
+        elif para.startswith("# "):
+            blocks.append(_heading_block(para[2:], level=1))
+        elif para.upper().startswith(("TITLE:", "SUBTITLE:", "TEMPLATE:", "SOURCES:")):
+            blocks.append(_heading_block(para, level=2))
+        # Image markers → callout block
+        elif para.startswith("[IMAGE:") or para.startswith("[ALT:") or para.startswith("[CAPTION:"):
+            blocks.append(_callout_block(para))
+        # Regular paragraph — split if too long
+        else:
+            for chunk in _split_text(para, _BLOCK_CHAR_LIMIT):
+                blocks.append(_paragraph_block(chunk))
+
+    return blocks if blocks else [_paragraph_block("")]
+
+
+def _paragraph_block(text: str) -> dict:
+    return {
+        "object": "block",
+        "type": "paragraph",
+        "paragraph": {
+            "rich_text": [{"type": "text", "text": {"content": text[:_BLOCK_CHAR_LIMIT]}}]
+        },
+    }
+
+
+def _heading_block(text: str, level: int = 2) -> dict:
+    heading_type = f"heading_{min(level, 3)}"
+    return {
+        "object": "block",
+        "type": heading_type,
+        heading_type: {
+            "rich_text": [{"type": "text", "text": {"content": text[:_BLOCK_CHAR_LIMIT]}}]
+        },
+    }
+
+
+def _callout_block(text: str) -> dict:
+    return {
+        "object": "block",
+        "type": "callout",
+        "callout": {
+            "icon": {"type": "emoji", "emoji": "🖼️"},
+            "rich_text": [{"type": "text", "text": {"content": text[:_BLOCK_CHAR_LIMIT]}}],
+        },
+    }
+
+
+def _split_text(text: str, max_len: int) -> list[str]:
+    """Split text into chunks at sentence boundaries, respecting max_len."""
+    if len(text) <= max_len:
+        return [text]
+
+    chunks: list[str] = []
+    while text:
+        if len(text) <= max_len:
+            chunks.append(text)
+            break
+        # Find last sentence end before max_len
+        cut = text.rfind(". ", 0, max_len)
+        if cut == -1:
+            cut = text.rfind(" ", 0, max_len)
+        if cut == -1:
+            cut = max_len
+        else:
+            cut += 1  # include the period/space
+        chunks.append(text[:cut].strip())
+        text = text[cut:].strip()
+    return chunks
 
 
 class NotionClient:
@@ -207,18 +291,7 @@ class NotionClient:
             "Token Cost": {"number": token_cost},
         }
 
-        children = [
-            {
-                "object": "block",
-                "type": "paragraph",
-                "paragraph": {
-                    "rich_text": [
-                        {"type": "text", "text": {"content": chunk}}
-                    ]
-                },
-            }
-            for chunk in _split_content(content, _BLOCK_CHAR_LIMIT)
-        ]
+        children = _content_to_blocks(content)
 
         try:
             page = await asyncio.to_thread(
