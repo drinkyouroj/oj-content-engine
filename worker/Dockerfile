@@ -32,22 +32,24 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy installed packages (site-packages) from builder
+# Copy installed packages and CLI scripts (uvicorn, arq, etc.) from builder
 COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
 
-# Copy worker source to /app — handle both contexts
+# Copy worker source to /app/worker/ so imports like worker.app.main work.
+# Handle both contexts: local (source IS worker/) and Railway (source has worker/ subdir)
 COPY . /tmp/src
 RUN if [ -d /tmp/src/worker ]; then \
-      cp -r /tmp/src/worker/* /app/; \
+      cp -r /tmp/src/worker /app/worker; \
     else \
-      cp -r /tmp/src/* /app/; \
+      mkdir -p /app/worker && cp -r /tmp/src/* /app/worker/; \
     fi && rm -rf /tmp/src
 
 # Make entrypoint executable
-RUN chmod +x entrypoint.sh
+RUN chmod +x /app/worker/entrypoint.sh
 
 # Railway injects PORT; default to 8000 for local dev
 ENV PORT=8000
 EXPOSE ${PORT}
 
-ENTRYPOINT ["./entrypoint.sh"]
+ENTRYPOINT ["/app/worker/entrypoint.sh"]
