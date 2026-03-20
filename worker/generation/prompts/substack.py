@@ -1,0 +1,133 @@
+"""Substack long-form article prompt template.
+
+Implements PRD Section 5 (Content Generation) for the Substack platform.
+Supports four article templates that the LLM selects from based on topic
+fit: Triple Connection, System Audit, Concept Decoder, and Pattern Report.
+
+Exports:
+    build_prompt(topic_title, topic_body, score_breakdown, thesis, exemplars) -> str
+"""
+from __future__ import annotations
+
+from worker.generation.prompts._shared import format_topic_context
+
+
+def build_prompt(
+    topic_title: str,
+    topic_body: str,
+    score_breakdown: dict[str, int],
+    thesis: str | None,
+    exemplars: list[str],
+) -> str:
+    """Assemble a Substack article generation prompt.
+
+    Combines topic context, optional thesis, optional voice exemplars, and
+    platform-specific structural instructions into a single user-role prompt.
+
+    Args:
+        topic_title: Title of the triaged topic.
+        topic_body: Body preview or summary of the topic.
+        score_breakdown: Dict mapping rubric dimensions to integer scores (0-100).
+        thesis: Human-supplied thesis angle, or None for AI-originated content.
+        exemplars: List of exemplar content strings for voice calibration.
+
+    Returns:
+        Formatted prompt string ready to pass as the user message.
+    """
+    sections: list[str] = []
+
+    sections.append(format_topic_context(topic_title, topic_body, score_breakdown))
+    sections.append(_format_thesis(thesis))
+
+    if exemplars:
+        sections.append(_format_exemplars(exemplars))
+
+    sections.append(_PLATFORM_INSTRUCTIONS)
+
+    return "\n\n".join(sections)
+
+
+def _format_thesis(thesis: str | None) -> str:
+    if thesis:
+        return f"== THESIS ==\n\nBuild the article around this angle:\n{thesis}"
+    return (
+        "== THESIS ==\n\n"
+        "No thesis provided. This is AI-originated content that will need "
+        "heavy editing. Generate your best angle based on the topic and score "
+        "breakdown, but flag clearly at the top of your output that this is "
+        "an AI-generated angle, not a human editorial direction."
+    )
+
+
+def _format_exemplars(exemplars: list[str]) -> str:
+    header = (
+        "== VOICE REFERENCE EXAMPLES ==\n\n"
+        "Study these examples to calibrate tone, sentence rhythm, and humor style. "
+        "Do not copy them. Absorb the voice and apply it to the new topic.\n"
+    )
+    numbered = "\n\n".join(
+        f"--- Example {i + 1} ---\n{ex}" for i, ex in enumerate(exemplars)
+    )
+    return f"{header}\n{numbered}"
+
+
+_PLATFORM_INSTRUCTIONS = """\
+== PLATFORM: SUBSTACK LONG-FORM ARTICLE ==
+
+Choose the article template that best fits this topic. You have four options:
+
+TEMPLATE 1 - TRIPLE CONNECTION
+Structure: The Spark (~400 words) > The Pattern (~500 words) > \
+The Protocol (~400 words) > Personal Code (~200-300 words)
+Best for: topics where you can connect a surprising observation to a broader \
+pattern and then to a concrete system or protocol.
+
+TEMPLATE 2 - SYSTEM AUDIT
+Structure: The Glitch (~400 words) > The Source Code (~500 words) > \
+The Upgrade (~400 words) > My Debug (~200-300 words)
+Best for: topics where something is broken and you want to diagnose why, \
+then propose a fix. Investigative or critical angle.
+
+TEMPLATE 3 - CONCEPT DECODER
+Structure: The Definition (~300 words) > The Mechanics (~600 words) > \
+The Applications (~400 words) > The Human Element (~200-300 words)
+Best for: explaining a concept that is widely misunderstood or oversimplified. \
+Educational angle with opinion woven in.
+
+TEMPLATE 4 - PATTERN REPORT (LISTICLE)
+Structure: Intro (~200-250 words) > 7-10 Pattern Items (~100-150 words each) \
+> The Meta-Pattern (~200-250 words)
+Best for: trend roundups, pattern collections, or "things I noticed" pieces. \
+Each item must have a distinct insight, not just a description.
+
+HARD CONSTRAINTS:
+- Total word count: 1,500-1,600 words. Absolute ceiling: 1,700. Do not exceed.
+- Title: 60 characters max. Must make a claim or challenge an assumption. \
+No colons. No "How to." No question marks.
+- Subtitle: 150 characters max. Clarifies the angle or adds a hook.
+- Include 3-4 image markers placed at natural section breaks. Each marker must \
+contain:
+  * A Flux/Midjourney image generation prompt (50-80 words). Describe the \
+visual concept, style, mood, color palette. Be specific enough for AI image \
+generation.
+  * Alt text (1 sentence describing what the image shows for accessibility).
+  * A punchy 1-sentence caption.
+  Format each image marker like this:
+  [IMAGE: <generation prompt>]
+  [ALT: <alt text>]
+  [CAPTION: <caption>]
+- Footnote every statistic with a source URL. If you cannot find a real source, \
+write [SOURCE NEEDED] instead of fabricating one.
+- End the piece with either a thought-provoking question OR a clear declarative \
+point. Not both. Pick the one that lands harder.
+
+OUTPUT FORMAT:
+Return the article as plain text with the following structure:
+TITLE: <title>
+SUBTITLE: <subtitle>
+TEMPLATE: <template name>
+
+<article body with image markers>
+
+FOOTNOTES:
+<numbered list of source URLs>"""
