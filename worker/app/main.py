@@ -11,11 +11,13 @@ from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from uuid import UUID
 
 from arq.connections import RedisSettings
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy import update as sa_update
 
@@ -208,7 +210,8 @@ async def suggest_theses_endpoint(
             select(Topic)
             .where(Topic.id == topic_id)
             .options(
-                selectinload(Topic.scored_signal).selectinload(ScoredSignal.signal)
+                selectinload(Topic.scored_signal).selectinload(ScoredSignal.signal),
+                selectinload(Topic.signal),
             )
         )
         topic = result.scalars().first()
@@ -289,7 +292,8 @@ async def generate_social_endpoint(
             select(Topic)
             .where(Topic.id == topic_id)
             .options(
-                selectinload(Topic.scored_signal).selectinload(ScoredSignal.signal)
+                selectinload(Topic.scored_signal).selectinload(ScoredSignal.signal),
+                selectinload(Topic.signal),
             )
         )
         topic = result.scalars().first()
@@ -333,6 +337,179 @@ async def generate_social_endpoint(
                 "Failed to generate %s content for topic %s", platform, topic_id
             )
             raise HTTPException(status_code=500, detail=str(exc))
+
+
+class ResearchRequest(BaseModel):
+    """Request body for the /api/research endpoint."""
+
+    query: str
+
+
+@app.post("/api/research")
+async def research_endpoint(
+    body: ResearchRequest,
+    x_worker_secret: str = Header(None),
+):
+    """Search existing signals + Brave Search for topic research.
+
+    Combines database full-text search of existing signals with live Brave
+    web search results, deduplicates, and returns a merged list. Used by the
+    Vercel research UI to let Justin explore topics before creating them.
+
+    Estimated runtime: 2-5s (DB query + external HTTP call).
+    Failure mode: returns partial results with warnings if Brave is unavailable.
+
+    Args:
+        body: ResearchRequest containing the search query string.
+        x_worker_secret: Shared secret from the x-worker-secret header.
+
+    Returns:
+        JSON with "results" (list of research items) and "warnings" (list of strings).
+
+    Raises:
+        HTTPException 401: If the secret is missing or incorrect.
+        HTTPException 503: If the session factory is not yet initialised.
+    """
+    if not x_worker_secret or not _settings or x_worker_secret != _settings.worker_secret:
+        raise HTTPException(status_code=401, detail="Invalid worker secret")
+    if _session_factory is None:
+        raise HTTPException(status_code=503, detail="Worker not ready")
+
+    from worker.discovery.research import (
+        merge_and_deduplicate,
+        search_existing_signals,
+        search_web,
+    )
+
+    warnings: list[str] = []
+
+    async with _session_factory() as session:
+        db_results = await search_existing_signals(body.query, session)
+
+    web_results = await search_web(body.query, _settings.brave_search_api_key)
+    if not web_results and _settings.brave_search_api_key:
+        warnings.append("Brave Search unavailable")
+
+    merged = merge_and_deduplicate(db_results, web_results)
+    return {"results": merged, "warnings": warnings}
+
+
+class ArticleInput(BaseModel):
+    """A single article selected from research results."""
+
+    title: str
+    url: str
+    body_preview: str | None = None
+    source: str = "web"
+
+
+class CreateTopicsRequest(BaseModel):
+    """Request body for the /api/create-topics endpoint."""
+
+    articles: list[ArticleInput]
+
+
+@app.post("/api/create-topics")
+async def create_topics_endpoint(
+    body: CreateTopicsRequest,
+    x_worker_secret: str = Header(None),
+):
+    """Create topics directly from selected research articles, skipping scoring.
+
+    For each article, creates a Signal (or reuses an existing one based on
+    dedup hash) and then creates a Topic in QUEUED status. Articles that
+    already have a Topic are skipped. This allows the research UI to fast-track
+    manually selected articles into the content generation pipeline.
+
+    Estimated runtime: <500ms (DB reads + writes only).
+    Failure mode: 401 on bad secret, 503 if not ready, 500 on DB error.
+
+    Args:
+        body: CreateTopicsRequest containing a list of articles.
+        x_worker_secret: Shared secret from the x-worker-secret header.
+
+    Returns:
+        JSON with "created" count, "skipped" count, and "topic_ids" list.
+
+    Raises:
+        HTTPException 401: If the secret is missing or incorrect.
+        HTTPException 503: If the session factory is not yet initialised.
+    """
+    if not x_worker_secret or not _settings or x_worker_secret != _settings.worker_secret:
+        raise HTTPException(status_code=401, detail="Invalid worker secret")
+    if _session_factory is None:
+        raise HTTPException(status_code=503, detail="Worker not ready")
+
+    from sqlalchemy import select
+
+    from worker.app.models.scored_signal import ScoredSignal
+    from worker.app.models.signal import Signal, SignalSource
+    from worker.app.models.topic import Topic, TopicStatus
+    from worker.discovery.dedup import compute_dedup_hash, normalize_url
+
+    created = 0
+    skipped = 0
+    topic_ids: list[str] = []
+
+    async with _session_factory() as session:
+        for article in body.articles:
+            normalized = normalize_url(article.url)
+            dedup_hash = compute_dedup_hash(normalized)
+
+            # Check for existing signal — reuse it if found
+            existing = await session.execute(
+                select(Signal.id).where(Signal.dedup_hash == dedup_hash)
+            )
+            existing_signal_id = existing.scalar_one_or_none()
+
+            if existing_signal_id is not None:
+                # Signal exists — check if a topic already exists for it
+                existing_topic = await session.execute(
+                    select(Topic.id).where(
+                        (Topic.signal_id == existing_signal_id)
+                        | (
+                            Topic.scored_signal_id.in_(
+                                select(ScoredSignal.id).where(
+                                    ScoredSignal.signal_id == existing_signal_id
+                                )
+                            )
+                        )
+                    )
+                )
+                if existing_topic.scalar_one_or_none() is not None:
+                    skipped += 1
+                    continue
+
+                signal_id = existing_signal_id
+            else:
+                signal = Signal(
+                    source=SignalSource.MANUAL,
+                    url=article.url,
+                    title=article.title,
+                    body_preview=(article.body_preview or "")[:500] or None,
+                    discovered_at=datetime.now(timezone.utc),
+                    source_metrics=None,
+                    dedup_hash=dedup_hash,
+                )
+                session.add(signal)
+                await session.flush()
+                signal_id = signal.id
+
+            topic = Topic(
+                signal_id=signal_id,
+                scored_signal_id=None,
+                status=TopicStatus.QUEUED,
+                queued_at=datetime.now(timezone.utc),
+            )
+            session.add(topic)
+            await session.flush()
+
+            topic_ids.append(str(topic.id))
+            created += 1
+
+        await session.commit()
+
+    return {"created": created, "skipped": skipped, "topic_ids": topic_ids}
 
 
 @app.get("/health")

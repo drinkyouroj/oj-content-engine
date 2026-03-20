@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     groq_api_key: str = ""
     notion_api_key: str = ""
     notion_db_id: str = ""
+    brave_search_api_key: str = ""
     worker_secret: str = ""
 
     # Logging

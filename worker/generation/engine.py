@@ -46,6 +46,33 @@ from worker.generation.voice_drift import run_voice_critique
 
 logger = logging.getLogger(__name__)
 
+
+def get_signal(topic: Topic) -> "Signal":
+    """Get the signal for a topic, whether steered or discovered.
+
+    Steered topics have a direct signal_id (no scored_signal). Discovered
+    topics reach their signal through scored_signal.signal. This helper
+    abstracts that difference so callers don't need to branch.
+
+    Args:
+        topic: Topic ORM instance with relationships loaded.
+
+    Returns:
+        The Signal instance associated with the topic.
+
+    Raises:
+        ValueError: If neither signal_id nor scored_signal_id is set.
+    """
+    from worker.app.models.signal import Signal  # noqa: F811
+
+    if topic.signal is not None:
+        return topic.signal
+    if topic.scored_signal is not None:
+        return topic.scored_signal.signal
+    raise ValueError(
+        f"Topic {topic.id} has no signal (neither signal_id nor scored_signal_id set)"
+    )
+
 # ---------------------------------------------------------------------------
 # Platform -> prompt builder mapping (social platforms only)
 # ---------------------------------------------------------------------------
@@ -120,10 +147,10 @@ async def generate_for_topic(
         No exceptions are raised to the caller. Failures are logged and
         recorded as SystemAlert rows.
     """
-    signal = topic.scored_signal.signal
+    signal = get_signal(topic)
     title = signal.title
     body = signal.body_preview or ""
-    score_breakdown = topic.scored_signal.score_breakdown
+    score_breakdown = topic.scored_signal.score_breakdown if topic.scored_signal else {}
     thesis = topic.thesis
 
     # Step 1: Detect vertical
@@ -266,10 +293,10 @@ async def generate_social_for_topic(
     if platform not in _SOCIAL_PLATFORM_BUILDERS:
         raise ValueError(f"Unknown social platform: {platform}")
 
-    signal = topic.scored_signal.signal
+    signal = get_signal(topic)
     title = signal.title
     body = signal.body_preview or ""
-    score_breakdown = topic.scored_signal.score_breakdown
+    score_breakdown = topic.scored_signal.score_breakdown if topic.scored_signal else {}
     thesis = topic.thesis
     vertical = topic.vertical or detect_vertical(title, body)
 

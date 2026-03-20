@@ -138,7 +138,9 @@ async def suggest_theses(
     Raises:
         LLMGenerationError: If the LLM call fails after retries.
     """
-    signal = topic.scored_signal.signal
+    from worker.generation.engine import get_signal
+
+    signal = get_signal(topic)
     scored = topic.scored_signal
 
     article_text = await _fetch_article(signal.url)
@@ -146,7 +148,8 @@ async def suggest_theses(
         logger.info("Using body_preview fallback for %s", signal.url)
         article_text = signal.body_preview or signal.title
 
-    breakdown = scored.score_breakdown or {}
+    breakdown = scored.score_breakdown if scored else {}
+    composite_score = scored.composite_score if scored else 0.0
     score_lines = "\n".join(
         f"  {dim.replace('_', ' ').title()}: {score}/100"
         for dim, score in breakdown.items()
@@ -154,7 +157,7 @@ async def suggest_theses(
 
     user_prompt = (
         f"Topic: {signal.title}\n"
-        f"Composite Score: {scored.composite_score}\n\n"
+        f"Composite Score: {composite_score}\n\n"
         f"Score Breakdown:\n{score_lines}\n\n"
         f"Source Article:\n{article_text}\n\n"
         f"Generate 3-5 thesis statements for a drinkYourOJ article about this topic."

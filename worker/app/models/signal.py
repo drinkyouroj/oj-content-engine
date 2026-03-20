@@ -28,6 +28,7 @@ class SignalSource(str, enum.Enum):
     REDDIT = "reddit"
     HN = "hn"
     TWITTER = "twitter"
+    MANUAL = "manual"
 
 
 class Signal(UUIDPrimaryKey, TimestampMixin, Base):

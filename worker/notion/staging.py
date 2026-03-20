@@ -71,6 +71,8 @@ async def stage_drafts(
             selectinload(ContentDraft.topic)
             .selectinload(Topic.scored_signal)
             .selectinload(ScoredSignal.signal),
+            selectinload(ContentDraft.topic)
+            .selectinload(Topic.signal),
         )
     )
     result = await session.execute(stmt)
@@ -92,7 +94,9 @@ async def stage_drafts(
                 score_breakdown = json.dumps(breakdown, indent=2)
 
             signal_title = "Unknown"
-            if topic and topic.scored_signal and topic.scored_signal.signal:
+            if topic and topic.signal:
+                signal_title = topic.signal.title
+            elif topic and topic.scored_signal and topic.scored_signal.signal:
                 signal_title = topic.scored_signal.signal.title
 
             # Normalise platform to a plain string regardless of whether it's

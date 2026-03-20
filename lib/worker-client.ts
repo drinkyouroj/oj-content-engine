@@ -152,3 +152,110 @@ export async function suggestTheses(
 
   return response.json() as Promise<{ theses: string[] }>;
 }
+
+/**
+ * Searches existing signals and Brave Search for topic research.
+ *
+ * POSTs to the Worker's /api/research endpoint with a free-text query.
+ * The Worker searches its local signal database and optionally hits
+ * Brave Search for additional results. Returns a unified list of
+ * research results with source attribution.
+ *
+ * @param query Free-text search query
+ * @returns Object containing results array and any warnings
+ * @throws WorkerClientError if WORKER_URL or WORKER_SECRET are not configured
+ * @throws WorkerClientError if the Worker API returns a non-2xx response
+ */
+export async function searchResearch(
+  query: string
+): Promise<{
+  results: Array<{
+    title: string;
+    url: string;
+    body_preview: string;
+    source: string;
+    published_at: string | null;
+  }>;
+  warnings: string[];
+}> {
+  const workerUrl = process.env.WORKER_URL;
+  const workerSecret = process.env.WORKER_SECRET;
+
+  if (!workerUrl || !workerSecret) {
+    throw new WorkerClientError("WORKER_URL or WORKER_SECRET not configured");
+  }
+
+  const response = await fetch(`${workerUrl}/api/research`, {
+    method: "POST",
+    headers: {
+      "x-worker-secret": workerSecret,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ query }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new WorkerClientError(`Worker API error: ${text}`, response.status);
+  }
+
+  return response.json() as Promise<{
+    results: Array<{
+      title: string;
+      url: string;
+      body_preview: string;
+      source: string;
+      published_at: string | null;
+    }>;
+    warnings: string[];
+  }>;
+}
+
+/**
+ * Creates topics directly from selected research articles, skipping scoring.
+ *
+ * POSTs to the Worker's /api/create-topics endpoint with an array of
+ * article objects. The Worker creates topic records in Postgres for each
+ * article, bypassing the normal discovery → scoring pipeline. Returns
+ * counts of created/skipped topics and their IDs.
+ *
+ * @param articles Array of article objects with title and url (body_preview and source optional)
+ * @returns Object containing created count, skipped count, and topic IDs
+ * @throws WorkerClientError if WORKER_URL or WORKER_SECRET are not configured
+ * @throws WorkerClientError if the Worker API returns a non-2xx response
+ */
+export async function createTopicsFromArticles(
+  articles: Array<{
+    title: string;
+    url: string;
+    body_preview?: string;
+    source?: string;
+  }>
+): Promise<{ created: number; skipped: number; topic_ids: string[] }> {
+  const workerUrl = process.env.WORKER_URL;
+  const workerSecret = process.env.WORKER_SECRET;
+
+  if (!workerUrl || !workerSecret) {
+    throw new WorkerClientError("WORKER_URL or WORKER_SECRET not configured");
+  }
+
+  const response = await fetch(`${workerUrl}/api/create-topics`, {
+    method: "POST",
+    headers: {
+      "x-worker-secret": workerSecret,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ articles }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new WorkerClientError(`Worker API error: ${text}`, response.status);
+  }
+
+  return response.json() as Promise<{
+    created: number;
+    skipped: number;
+    topic_ids: string[];
+  }>;
+}
