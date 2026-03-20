@@ -21,6 +21,16 @@ dev = [
     "ruff>=0.8.0",
 ]
 
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.package-dir]
+"worker" = "."
+
+[tool.setuptools.packages]
+find = { where = [".."], include = ["worker", "worker.*"] }
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["app", "jobs"]
