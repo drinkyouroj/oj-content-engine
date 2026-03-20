@@ -12,6 +12,8 @@ dependencies = [
     "arq>=0.26.1",
     "pydantic-settings>=2.7.0",
     "httpx>=0.28.0",
+    "feedparser>=6.0.11",
+    "rapidfuzz>=3.6.0",
 ]
 
 [project.optional-dependencies]
@@ -19,6 +21,7 @@ dev = [
     "pytest>=8.3.0",
     "pytest-asyncio>=0.25.0",
     "ruff>=0.8.0",
+    "respx>=0.22.0",
 ]
 
 [build-system]
@@ -33,7 +36,7 @@ find = { where = [".."], include = ["worker", "worker.*"] }
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-testpaths = ["app", "jobs"]
+testpaths = ["app", "jobs", "discovery"]
 
 [tool.ruff]
 target-version = "py312"

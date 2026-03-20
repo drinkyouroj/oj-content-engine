@@ -1,8 +1,8 @@
 """
 ARQ worker configuration and job registry.
 
-Connects to Upstash Redis via ARQ_REDIS_URL. Future feature branches
-register their cron functions and jobs here.
+Connects to Upstash Redis via ARQ_REDIS_URL. Registers discovery pollers
+as cron jobs for automated trend ingestion.
 
 Implements PRD Section 8 (ARQ as async task queue).
 """
@@ -12,6 +12,9 @@ from __future__ import annotations
 import logging
 
 from arq.connections import RedisSettings
+from arq.cron import cron
+
+from worker.jobs.discovery_jobs import poll_hn, poll_reddit, poll_rss, poll_twitter
 
 logger = logging.getLogger(__name__)
 
@@ -47,11 +50,20 @@ class WorkerSettings:
     """ARQ worker settings.
 
     Configures the Redis connection and registers available job functions.
-    Future feature branches add their functions to the `functions` list
-    and cron_jobs to `cron_jobs`.
+    Discovery pollers run on cron schedules per PRD Section 2:
+    - RSS: every 4 hours
+    - Reddit: every 1 hour
+    - HN: every 1 hour
+    - Twitter: every 2 hours
     """
 
     redis_settings = _build_redis_settings()
 
-    functions = [ping]
-    cron_jobs = []
+    functions = [ping, poll_rss, poll_reddit, poll_hn, poll_twitter]
+
+    cron_jobs = [
+        cron(poll_rss, hour={0, 4, 8, 12, 16, 20}, minute=0),
+        cron(poll_reddit, minute=15),
+        cron(poll_hn, minute=30),
+        cron(poll_twitter, hour={1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23}, minute=45),
+    ]
