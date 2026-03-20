@@ -29,6 +29,9 @@ def _build_redis_settings() -> RedisSettings:
     return RedisSettings.from_dsn(get_settings().arq_redis_url)
 
 
+from worker.jobs.scoring_jobs import run_scoring_pipeline
+
+
 async def ping(ctx: dict) -> str:
     """Example ARQ job that proves the worker is running.
 
@@ -59,7 +62,7 @@ class WorkerSettings:
 
     redis_settings = _build_redis_settings()
 
-    functions = [ping, poll_rss, poll_reddit, poll_hn, poll_twitter]
+    functions = [ping, poll_rss, poll_reddit, poll_hn, poll_twitter, run_scoring_pipeline]
 
     cron_jobs = [
         cron(poll_rss, hour={0, 4, 8, 12, 16, 20}, minute=0),
