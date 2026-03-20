@@ -46,6 +46,7 @@ GENERATION_MODELS: dict[str, dict[str, str]] = {
     "linkedin": {"provider": "groq", "model": "llama-3.3-70b-versatile"},
     "instagram": {"provider": "groq", "model": "llama-3.3-70b-versatile"},
     "substack_critique": {"provider": "anthropic", "model": "claude-sonnet-4-6"},
+    "thesis_suggest": {"provider": "anthropic", "model": "claude-haiku-4-5"},
 }
 
 
