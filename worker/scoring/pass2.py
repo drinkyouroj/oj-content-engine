@@ -184,6 +184,11 @@ async def _call_llm(api_key: str, user_prompt: str) -> dict[str, int]:
     )
 
     raw_text = response.content[0].text.strip()
+    # Strip markdown code fences if present (```json ... ```)
+    if raw_text.startswith("```"):
+        raw_text = raw_text.split("\n", 1)[1]  # remove opening ```json
+        raw_text = raw_text.rsplit("```", 1)[0]  # remove closing ```
+        raw_text = raw_text.strip()
     parsed = json.loads(raw_text)
 
     # Validate and extract required keys
