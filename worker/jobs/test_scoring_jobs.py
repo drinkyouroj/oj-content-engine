@@ -47,6 +47,7 @@ async def test_scores_unscored_signals():
     mock_settings = SimpleNamespace(
         database_url="postgresql://test:test@localhost/test",
         anthropic_api_key="sk-test",
+        groq_api_key="gsk-test",
     )
 
     with (
@@ -89,6 +90,7 @@ async def test_handles_individual_signal_failure():
     mock_settings = SimpleNamespace(
         database_url="postgresql://test:test@localhost/test",
         anthropic_api_key="sk-test",
+        groq_api_key="gsk-test",
     )
 
     with (
@@ -129,6 +131,7 @@ async def test_no_unscored_signals():
     mock_settings = SimpleNamespace(
         database_url="postgresql://test:test@localhost/test",
         anthropic_api_key="sk-test",
+        groq_api_key="gsk-test",
     )
 
     with (

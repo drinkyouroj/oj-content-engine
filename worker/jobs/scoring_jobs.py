@@ -64,7 +64,7 @@ async def run_scoring_pipeline(ctx: dict) -> int:
                 await score_signal(
                     signal_id=signal.id,
                     session=session,
-                    anthropic_api_key=settings.anthropic_api_key,
+                    llm_api_key=settings.groq_api_key or settings.anthropic_api_key,
                 )
                 scored_count += 1
             except Exception:  # noqa: BLE001
