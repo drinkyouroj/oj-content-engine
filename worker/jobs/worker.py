@@ -30,6 +30,7 @@ def _build_redis_settings() -> RedisSettings:
 
 
 from worker.jobs.scoring_jobs import run_scoring_pipeline
+from worker.jobs.triage_jobs import run_triage_job
 
 
 async def ping(ctx: dict) -> str:
@@ -62,7 +63,7 @@ class WorkerSettings:
 
     redis_settings = _build_redis_settings()
 
-    functions = [ping, poll_rss, poll_reddit, poll_hn, poll_twitter, run_scoring_pipeline]
+    functions = [ping, poll_rss, poll_reddit, poll_hn, poll_twitter, run_scoring_pipeline, run_triage_job]
 
     cron_jobs = [
         cron(poll_rss, hour={0, 4, 8, 12, 16, 20}, minute=0),
