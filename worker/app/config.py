@@ -21,7 +21,8 @@ class Settings(BaseSettings):
     upstash_redis_rest_token: str
 
     # Optional — not needed for scaffold, required by future feature branches
-    anthropic_api_key: str = ""
+    anthropic_api_key: str = ""  # Legacy — kept for backward compat
+    groq_api_key: str = ""
     notion_api_key: str = ""
     notion_db_id: str = ""
     worker_secret: str = ""

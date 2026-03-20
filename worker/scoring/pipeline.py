@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 async def score_signal(
     signal_id: uuid.UUID,
     session: AsyncSession,
-    anthropic_api_key: str,
+    llm_api_key: str,
 ) -> ScoredSignal:
     """Score a single signal through the full two-pass pipeline.
 
@@ -57,7 +57,7 @@ async def score_signal(
     Args:
         signal_id: UUID of the signal to score.
         session: Async database session.
-        anthropic_api_key: Anthropic API key for Pass 2.
+        llm_api_key: Groq API key for Pass 2 LLM scoring.
 
     Returns:
         ScoredSignal instance with scoring results persisted.
@@ -116,7 +116,7 @@ async def score_signal(
 
     # Step 6: Pass 2 — LLM scoring
     try:
-        pass2_scores = await score_with_llm(signal, anthropic_api_key)
+        pass2_scores = await score_with_llm(signal, llm_api_key)
     except LLMScoringError:
         logger.error("LLM scoring failed for signal %s — marking as failed", signal_id)
         scored_signal = ScoredSignal(

@@ -1,14 +1,13 @@
 """
 Tests for Pass 2 LLM-assisted scoring.
 
-Mocks the Anthropic SDK to test JSON parsing, retry logic, failure handling,
+Mocks the Groq SDK to test JSON parsing, retry logic, failure handling,
 and the empty API key fallback. No network or API keys required.
 """
 
 from __future__ import annotations
 
 import json
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -22,23 +21,25 @@ def _make_signal(
     body_preview: str | None = "Some preview text",
     source: str = "rss",
     source_metrics: dict | None = None,
-) -> SimpleNamespace:
+) -> MagicMock:
     """Create a fake signal for testing."""
-    return SimpleNamespace(
-        id="test-id",
-        title=title,
-        body_preview=body_preview,
-        source=source,
-        source_metrics=source_metrics,
-    )
+    sig = MagicMock()
+    sig.id = "test-id"
+    sig.title = title
+    sig.body_preview = body_preview
+    sig.source = source
+    sig.source_metrics = source_metrics
+    return sig
 
 
-def _mock_anthropic_response(scores: dict) -> MagicMock:
-    """Build a mock Anthropic messages.create response."""
-    content_block = MagicMock()
-    content_block.text = json.dumps(scores)
+def _mock_groq_response(scores: dict) -> MagicMock:
+    """Build a mock Groq chat.completions.create response."""
+    message = MagicMock()
+    message.content = json.dumps(scores)
+    choice = MagicMock()
+    choice.message = message
     response = MagicMock()
-    response.content = [content_block]
+    response.choices = [choice]
     return response
 
 
@@ -62,12 +63,12 @@ async def test_successful_llm_scoring():
     }
 
     mock_client = AsyncMock()
-    mock_client.messages.create = AsyncMock(
-        return_value=_mock_anthropic_response(expected)
+    mock_client.chat.completions.create = AsyncMock(
+        return_value=_mock_groq_response(expected)
     )
 
-    with patch("worker.scoring.pass2.anthropic.AsyncAnthropic", return_value=mock_client):
-        result = await score_with_llm(signal, "sk-test-key")
+    with patch("worker.scoring.pass2.AsyncGroq", return_value=mock_client):
+        result = await score_with_llm(signal, "gsk-test-key")
 
     assert result == {
         "depth_potential": 85,
@@ -87,12 +88,12 @@ async def test_scores_clamped_to_range():
     }
 
     mock_client = AsyncMock()
-    mock_client.messages.create = AsyncMock(
-        return_value=_mock_anthropic_response(response_data)
+    mock_client.chat.completions.create = AsyncMock(
+        return_value=_mock_groq_response(response_data)
     )
 
-    with patch("worker.scoring.pass2.anthropic.AsyncAnthropic", return_value=mock_client):
-        result = await score_with_llm(signal, "sk-test-key")
+    with patch("worker.scoring.pass2.AsyncGroq", return_value=mock_client):
+        result = await score_with_llm(signal, "gsk-test-key")
 
     assert result["depth_potential"] == 100
     assert result["novelty"] == 0
@@ -107,43 +108,43 @@ async def test_retry_on_failure():
     signal = _make_signal()
 
     mock_client = AsyncMock()
-    mock_client.messages.create = AsyncMock(
+    mock_client.chat.completions.create = AsyncMock(
         side_effect=Exception("API error")
     )
 
     with (
-        patch("worker.scoring.pass2.anthropic.AsyncAnthropic", return_value=mock_client),
+        patch("worker.scoring.pass2.AsyncGroq", return_value=mock_client),
         patch("asyncio.sleep", new_callable=AsyncMock),
         pytest.raises(LLMScoringError),
     ):
-        await score_with_llm(signal, "sk-test-key")
+        await score_with_llm(signal, "gsk-test-key")
 
-    assert mock_client.messages.create.call_count == 3
+    assert mock_client.chat.completions.create.call_count == 3
 
 
 @pytest.mark.asyncio
 async def test_retry_succeeds_on_second_attempt():
     """If first attempt fails but second succeeds, returns scores."""
     signal = _make_signal()
-    good_response = _mock_anthropic_response({
+    good_response = _mock_groq_response({
         "depth_potential": 75,
         "novelty": 60,
         "brand_angle_availability": 80,
     })
 
     mock_client = AsyncMock()
-    mock_client.messages.create = AsyncMock(
+    mock_client.chat.completions.create = AsyncMock(
         side_effect=[Exception("Transient error"), good_response]
     )
 
     with (
-        patch("worker.scoring.pass2.anthropic.AsyncAnthropic", return_value=mock_client),
+        patch("worker.scoring.pass2.AsyncGroq", return_value=mock_client),
         patch("asyncio.sleep", new_callable=AsyncMock),
     ):
-        result = await score_with_llm(signal, "sk-test-key")
+        result = await score_with_llm(signal, "gsk-test-key")
 
     assert result == {"depth_potential": 75, "novelty": 60, "brand_angle_availability": 80}
-    assert mock_client.messages.create.call_count == 2
+    assert mock_client.chat.completions.create.call_count == 2
 
 
 @pytest.mark.asyncio
@@ -153,20 +154,22 @@ async def test_invalid_json_response():
 
     signal = _make_signal()
 
-    content_block = MagicMock()
-    content_block.text = "not valid json"
+    message = MagicMock()
+    message.content = "not valid json"
+    choice = MagicMock()
+    choice.message = message
     bad_response = MagicMock()
-    bad_response.content = [content_block]
+    bad_response.choices = [choice]
 
     mock_client = AsyncMock()
-    mock_client.messages.create = AsyncMock(return_value=bad_response)
+    mock_client.chat.completions.create = AsyncMock(return_value=bad_response)
 
     with (
-        patch("worker.scoring.pass2.anthropic.AsyncAnthropic", return_value=mock_client),
+        patch("worker.scoring.pass2.AsyncGroq", return_value=mock_client),
         patch("asyncio.sleep", new_callable=AsyncMock),
         pytest.raises(LLMScoringError),
     ):
-        await score_with_llm(signal, "sk-test-key")
+        await score_with_llm(signal, "gsk-test-key")
 
 
 @pytest.mark.asyncio
@@ -180,15 +183,15 @@ async def test_source_metrics_included_in_prompt():
     }
 
     mock_client = AsyncMock()
-    mock_client.messages.create = AsyncMock(
-        return_value=_mock_anthropic_response(expected)
+    mock_client.chat.completions.create = AsyncMock(
+        return_value=_mock_groq_response(expected)
     )
 
-    with patch("worker.scoring.pass2.anthropic.AsyncAnthropic", return_value=mock_client):
-        result = await score_with_llm(signal, "sk-test-key")
+    with patch("worker.scoring.pass2.AsyncGroq", return_value=mock_client):
+        result = await score_with_llm(signal, "gsk-test-key")
 
     # Verify metrics were in the call
-    call_args = mock_client.messages.create.call_args
-    user_msg = call_args.kwargs["messages"][0]["content"]
+    call_args = mock_client.chat.completions.create.call_args
+    user_msg = call_args.kwargs["messages"][1]["content"]
     assert "upvotes" in user_msg
     assert result == expected

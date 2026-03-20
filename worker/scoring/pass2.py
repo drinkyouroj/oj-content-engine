@@ -2,13 +2,13 @@
 Pass 2 — LLM-assisted scoring for Depth Potential, Novelty, and Brand Angle.
 
 Implements PRD Section 3 (Topic Triage Rubric), Pass 2.
-Uses Claude Haiku to evaluate subjective dimensions that require understanding
-of the drinkYourOJ brand voice and content niche. Only called if the signal
-passes the Pass 1 pre-filter threshold.
+Uses Groq (fast inference) to evaluate subjective dimensions that require
+understanding of the drinkYourOJ brand voice and content niche. Only called
+if the signal passes the Pass 1 pre-filter threshold.
 
 Inputs:
     - Signal ORM instance (title, body_preview, source, source_metrics).
-    - Anthropic API key string.
+    - Groq API key string.
 
 Outputs:
     - Dictionary with keys: depth_potential, novelty, brand_angle_availability.
@@ -21,16 +21,17 @@ import json
 import logging
 from typing import Any
 
-import anthropic
+from groq import AsyncGroq
+
+logger = logging.getLogger(__name__)
 
 
 class LLMScoringError(Exception):
     """Raised when LLM scoring fails after all retries."""
 
-logger = logging.getLogger(__name__)
 
-# Model used for scoring — Haiku for speed and cost efficiency
-_MODEL = "claude-haiku-4-5-20251001"
+# Model used for scoring — fast and cheap via Groq
+_MODEL = "llama-3.3-70b-versatile"
 
 _SYSTEM_PROMPT = """\
 You are a scoring assistant for the drinkYourOJ content brand.
@@ -76,29 +77,29 @@ _DEFAULT_SCORES: dict[str, int] = {
 
 async def score_with_llm(
     signal: Any,
-    anthropic_api_key: str,
+    llm_api_key: str,
 ) -> dict[str, int]:
-    """Score a signal using Claude Haiku for subjective dimensions.
+    """Score a signal using Groq LLM for subjective dimensions.
 
-    Calls the Anthropic API with signal context and parses the JSON response.
+    Calls the Groq API with signal context and parses the JSON response.
     Retries up to 3 times with exponential backoff on transient failures.
     Returns default scores (all 50) if the API key is empty.
 
     Args:
         signal: Signal ORM instance with title, body_preview, source,
             and source_metrics attributes.
-        anthropic_api_key: Anthropic API key. If empty, returns defaults.
+        llm_api_key: Groq API key. If empty, returns defaults.
 
     Returns:
         Dictionary with depth_potential, novelty, brand_angle_availability
         as integers 0-100.
 
     Raises:
-        No exceptions are raised; failures are logged and defaults returned.
+        LLMScoringError: If all retry attempts fail.
     """
-    if not anthropic_api_key:
+    if not llm_api_key:
         logger.warning(
-            "Anthropic API key is empty — returning default Pass 2 scores "
+            "LLM API key is empty — returning default Pass 2 scores "
             "for signal %s",
             getattr(signal, "id", "unknown"),
         )
@@ -111,7 +112,7 @@ async def score_with_llm(
     last_error: Exception | None = None
     for attempt in range(_MAX_RETRIES):
         try:
-            return await _call_llm(anthropic_api_key, user_prompt)
+            return await _call_llm(llm_api_key, user_prompt)
         except Exception as exc:  # noqa: BLE001
             last_error = exc
             wait = 2**attempt  # 1s, 2s, 4s
@@ -161,33 +162,35 @@ def _build_user_prompt(signal: Any) -> str:
 
 
 async def _call_llm(api_key: str, user_prompt: str) -> dict[str, int]:
-    """Make the Anthropic API call and parse the response.
+    """Make the Groq API call and parse the response.
 
     Args:
-        api_key: Valid Anthropic API key.
+        api_key: Valid Groq API key.
         user_prompt: Formatted user prompt string.
 
     Returns:
         Parsed scoring dictionary.
 
     Raises:
-        anthropic.APIError: On API failures.
         ValueError: If the response cannot be parsed as valid JSON.
         KeyError: If required keys are missing from the response.
     """
-    client = anthropic.AsyncAnthropic(api_key=api_key)
-    response = await client.messages.create(
+    client = AsyncGroq(api_key=api_key)
+    response = await client.chat.completions.create(
         model=_MODEL,
         max_tokens=256,
-        system=_SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": user_prompt}],
+        temperature=0.3,
+        messages=[
+            {"role": "system", "content": _SYSTEM_PROMPT},
+            {"role": "user", "content": user_prompt},
+        ],
     )
 
-    raw_text = response.content[0].text.strip()
+    raw_text = response.choices[0].message.content.strip()
     # Strip markdown code fences if present (```json ... ```)
     if raw_text.startswith("```"):
-        raw_text = raw_text.split("\n", 1)[1]  # remove opening ```json
-        raw_text = raw_text.rsplit("```", 1)[0]  # remove closing ```
+        raw_text = raw_text.split("\n", 1)[1]
+        raw_text = raw_text.rsplit("```", 1)[0]
         raw_text = raw_text.strip()
     parsed = json.loads(raw_text)
 
