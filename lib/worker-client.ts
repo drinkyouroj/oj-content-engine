@@ -69,3 +69,42 @@ export async function triggerRegeneration(
 
   return response.json() as Promise<{ jobId: string }>;
 }
+
+/**
+ * Requests thesis suggestions from the Worker for a given topic.
+ *
+ * POSTs to the Worker's /api/suggest-theses/:topicId endpoint, which fetches
+ * the source article, combines it with score data, and calls Claude Haiku to
+ * produce 3-5 candidate thesis statements. The call blocks until generation
+ * completes (estimated 5-15s).
+ *
+ * @param topicId UUID of the topic
+ * @returns Object containing array of thesis strings
+ * @throws WorkerClientError if WORKER_URL or WORKER_SECRET are not configured
+ * @throws WorkerClientError if the Worker API returns a non-2xx response
+ */
+export async function suggestTheses(
+  topicId: string
+): Promise<{ theses: string[] }> {
+  const workerUrl = process.env.WORKER_URL;
+  const workerSecret = process.env.WORKER_SECRET;
+
+  if (!workerUrl || !workerSecret) {
+    throw new WorkerClientError("WORKER_URL or WORKER_SECRET not configured");
+  }
+
+  const response = await fetch(`${workerUrl}/api/suggest-theses/${topicId}`, {
+    method: "POST",
+    headers: {
+      "x-worker-secret": workerSecret,
+      "Content-Type": "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new WorkerClientError(`Worker API error: ${text}`, response.status);
+  }
+
+  return response.json() as Promise<{ theses: string[] }>;
+}
