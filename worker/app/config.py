@@ -34,7 +34,9 @@ class Settings(BaseSettings):
     reddit_client_secret: str = ""
 
     model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore"
+        env_file=("../.env.local", "../.env", ".env.local", ".env"),
+        env_file_encoding="utf-8",
+        extra="ignore",
     )
 
 
