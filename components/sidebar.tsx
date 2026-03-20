@@ -19,7 +19,6 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: "\u{1F4CA}" },
-  { label: "Review", href: "/dashboard/review", icon: "\u{1F4DD}" },
 ];
 
 export function Sidebar() {
