@@ -13,8 +13,6 @@ import logging
 
 from arq.connections import RedisSettings
 
-from worker.app.config import get_settings
-
 logger = logging.getLogger(__name__)
 
 
@@ -35,6 +33,25 @@ async def ping(ctx: dict) -> str:
     return "pong"
 
 
+class _LazyRedisSettings:
+    """Descriptor that defers RedisSettings creation until first access.
+
+    ARQ reads WorkerSettings.redis_settings at worker startup, not at
+    import time. This lets tests import WorkerSettings without needing
+    env vars configured.
+    """
+
+    def __set_name__(self, owner, name):
+        self._name = name
+
+    def __get__(self, obj, objtype=None):
+        from worker.app.config import get_settings
+        settings = RedisSettings.from_dsn(get_settings().arq_redis_url)
+        # Cache on the class so this only runs once
+        setattr(objtype, self._name, settings)
+        return settings
+
+
 class WorkerSettings:
     """ARQ worker settings.
 
@@ -43,15 +60,7 @@ class WorkerSettings:
     and cron_jobs to `cron_jobs`.
     """
 
+    redis_settings = _LazyRedisSettings()
+
     functions = [ping]
     cron_jobs = []
-
-    @staticmethod
-    def redis_settings() -> RedisSettings:
-        """Build Redis connection settings from app config.
-
-        Returns:
-            RedisSettings configured for Upstash Redis.
-        """
-        settings = get_settings()
-        return RedisSettings.from_dsn(settings.arq_redis_url)
