@@ -72,14 +72,15 @@ export async function getTopicsNeedingAttention() {
       t.created_at,
       ss.composite_score,
       ss.score_breakdown,
-      s.title,
-      s.url,
-      s.source
+      COALESCE(ds.title, s.title) AS title,
+      COALESCE(ds.url, s.url) AS url,
+      COALESCE(ds.source, s.source) AS source
     FROM topics t
-    JOIN scored_signals ss ON t.scored_signal_id = ss.id
-    JOIN signals s ON ss.signal_id = s.id
+    LEFT JOIN scored_signals ss ON t.scored_signal_id = ss.id
+    LEFT JOIN signals s ON ss.signal_id = s.id
+    LEFT JOIN signals ds ON t.signal_id = ds.id
     WHERE t.status IN ('queued', 'review', 'generating', 'generated')
-    ORDER BY ss.composite_score DESC
+    ORDER BY ss.composite_score DESC NULLS LAST
     LIMIT 50
   `;
 }
@@ -103,11 +104,12 @@ export async function getRecentDrafts() {
       cd.status,
       cd.notion_page_id,
       cd.created_at,
-      s.title AS topic_title
+      COALESCE(ds.title, s.title) AS topic_title
     FROM content_drafts cd
     JOIN topics t ON cd.topic_id = t.id
-    JOIN scored_signals ss ON t.scored_signal_id = ss.id
-    JOIN signals s ON ss.signal_id = s.id
+    LEFT JOIN scored_signals ss ON t.scored_signal_id = ss.id
+    LEFT JOIN signals s ON ss.signal_id = s.id
+    LEFT JOIN signals ds ON t.signal_id = ds.id
     ORDER BY cd.created_at DESC
     LIMIT 20
   `;
@@ -129,14 +131,15 @@ export async function getTopicWithDetails(topicId: string) {
       t.*,
       ss.composite_score,
       ss.score_breakdown,
-      s.title AS signal_title,
-      s.url AS signal_url,
-      s.source,
-      s.body_preview,
-      s.discovered_at
+      COALESCE(ds.title, s.title) AS signal_title,
+      COALESCE(ds.url, s.url) AS signal_url,
+      COALESCE(ds.source, s.source) AS source,
+      COALESCE(ds.body_preview, s.body_preview) AS body_preview,
+      COALESCE(ds.discovered_at, s.discovered_at) AS discovered_at
     FROM topics t
-    JOIN scored_signals ss ON t.scored_signal_id = ss.id
-    JOIN signals s ON ss.signal_id = s.id
+    LEFT JOIN scored_signals ss ON t.scored_signal_id = ss.id
+    LEFT JOIN signals s ON ss.signal_id = s.id
+    LEFT JOIN signals ds ON t.signal_id = ds.id
     WHERE t.id = ${topicId}::uuid
   `;
   return rows[0] || null;

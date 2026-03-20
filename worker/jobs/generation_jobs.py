@@ -72,6 +72,7 @@ async def run_generation_job(ctx: dict) -> dict[str, int]:
             | ((Topic.status == TopicStatus.REVIEW) & (Topic.thesis_provided == True))  # noqa: E712
         ).options(
             selectinload(Topic.scored_signal).selectinload(ScoredSignal.signal),
+            selectinload(Topic.signal),
         )
         result = await session.execute(stmt)
         topics = result.scalars().all()

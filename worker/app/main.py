@@ -208,7 +208,8 @@ async def suggest_theses_endpoint(
             select(Topic)
             .where(Topic.id == topic_id)
             .options(
-                selectinload(Topic.scored_signal).selectinload(ScoredSignal.signal)
+                selectinload(Topic.scored_signal).selectinload(ScoredSignal.signal),
+                selectinload(Topic.signal),
             )
         )
         topic = result.scalars().first()
@@ -289,7 +290,8 @@ async def generate_social_endpoint(
             select(Topic)
             .where(Topic.id == topic_id)
             .options(
-                selectinload(Topic.scored_signal).selectinload(ScoredSignal.signal)
+                selectinload(Topic.scored_signal).selectinload(ScoredSignal.signal),
+                selectinload(Topic.signal),
             )
         )
         topic = result.scalars().first()
