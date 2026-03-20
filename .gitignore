@@ -40,3 +40,7 @@ htmlcov/
 
 # Vercel
 .vercel/
+.vercel
+
+# Superpowers
+.superpowers/
