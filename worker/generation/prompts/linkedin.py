@@ -4,12 +4,17 @@ Implements PRD Section 5 (Content Generation) for the LinkedIn platform.
 Generates 300-600 word posts with an opening hook, insight paragraphs, and
 a closing thought. Explicitly avoids hustle-porn and corporate glaze.
 
+Social content is generated on-demand after the Substack article exists.
+The Substack article is injected as source context so the post distills
+the long-form piece into platform-appropriate content.
+
 Exports:
-    build_prompt(topic_title, topic_body, score_breakdown, thesis, exemplars) -> str
+    build_prompt(topic_title, topic_body, score_breakdown, thesis, exemplars,
+                 substack_content) -> str
 """
 from __future__ import annotations
 
-from worker.generation.prompts._shared import format_topic_context
+from worker.generation.prompts._shared import format_source_article, format_topic_context
 
 
 def build_prompt(
@@ -18,6 +23,7 @@ def build_prompt(
     score_breakdown: dict[str, int],
     thesis: str | None,
     exemplars: list[str],
+    substack_content: str | None = None,
 ) -> str:
     """Assemble a LinkedIn post generation prompt.
 
@@ -27,6 +33,8 @@ def build_prompt(
         score_breakdown: Dict mapping rubric dimensions to integer scores (0-100).
         thesis: Human-supplied thesis angle, or None for AI-originated content.
         exemplars: List of exemplar content strings for voice calibration.
+        substack_content: The generated Substack article to use as source context.
+            Required for on-demand social generation.
 
     Returns:
         Formatted prompt string ready to pass as the user message.
@@ -34,6 +42,10 @@ def build_prompt(
     sections: list[str] = []
 
     sections.append(format_topic_context(topic_title, topic_body, score_breakdown))
+
+    if substack_content:
+        sections.append(format_source_article(substack_content))
+
     sections.append(_format_thesis(thesis))
 
     if exemplars:

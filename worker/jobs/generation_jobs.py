@@ -1,14 +1,19 @@
 """ARQ job for content generation.
 
 Wraps the generation engine in an ARQ-compatible async function.
-Processes all queued/approved topics, generates 4 platform drafts per topic,
+Processes all queued/approved topics, generates a Substack draft per topic,
 then triggers Notion staging.
+
+Social platform content (Twitter, LinkedIn, Instagram) is generated
+on-demand via the /api/generate-social endpoint when the reviewer
+explicitly requests it from the dashboard.
 
 Implements PRD Section 4 (Content Generation Pipeline).
 """
 from __future__ import annotations
 
 import logging
+import time
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
@@ -34,11 +39,14 @@ async def _get_session() -> tuple[AsyncSession, AsyncEngine]:
 
 
 async def run_generation_job(ctx: dict) -> dict[str, int]:
-    """ARQ job: generate content drafts for all queued/approved topics.
+    """ARQ job: generate Substack drafts for all queued/approved topics.
 
     Queries topics with status='queued' (auto-approved) or status='review'
-    with thesis provided (manually approved), generates 4 platform drafts
+    with thesis provided (manually approved), generates a Substack draft
     for each, then calls Notion staging.
+
+    Social content (Twitter, LinkedIn, Instagram) is NOT generated here.
+    Those are generated on-demand via the /api/generate-social endpoint.
 
     Args:
         ctx: ARQ job context dictionary.
@@ -46,11 +54,14 @@ async def run_generation_job(ctx: dict) -> dict[str, int]:
     Returns:
         Dictionary with counts: {"topics_processed": N, "drafts_created": N, "errors": N}.
 
-    Estimated runtime: 30-120s per topic (4 LLM calls + 1 critique).
+    Estimated runtime: 15-60s per topic (1 LLM call + 1 critique).
     Retry behavior: ARQ default (3 retries with backoff).
     Failure mode: Per-topic errors logged; does not block other topics.
     """
     from worker.jobs.notion_jobs import run_notion_staging_job
+
+    t0 = time.monotonic()
+    logger.info("Starting generation job", extra={"event": "job_start", "stage": "generation"})
 
     settings = get_settings()
     session, engine = await _get_session()
@@ -66,8 +77,17 @@ async def run_generation_job(ctx: dict) -> dict[str, int]:
         topics = result.scalars().all()
 
         if not topics:
-            logger.info("No queued topics to generate")
+            elapsed = round(time.monotonic() - t0, 2)
+            logger.info(
+                "No queued topics to generate (%.2fs)", elapsed,
+                extra={"event": "job_complete", "stage": "generation", "topics_processed": 0, "elapsed_s": elapsed},
+            )
             return {"topics_processed": 0, "drafts_created": 0, "errors": 0}
+
+        logger.info(
+            "Found %d topics to generate", len(topics),
+            extra={"event": "generation_batch", "stage": "generation", "topics": len(topics)},
+        )
 
         client = LLMClient(
             groq_api_key=settings.groq_api_key,
@@ -76,17 +96,43 @@ async def run_generation_job(ctx: dict) -> dict[str, int]:
 
         counts = {"topics_processed": 0, "drafts_created": 0, "errors": 0}
 
-        for topic in topics:
+        for i, topic in enumerate(topics, 1):
+            topic_t0 = time.monotonic()
             try:
                 drafts = await generate_for_topic(topic, session, client)
                 counts["topics_processed"] += 1
                 counts["drafts_created"] += len(drafts)
+                topic_elapsed = round(time.monotonic() - topic_t0, 2)
+                logger.info(
+                    "Generated %d drafts for topic %s (%d/%d) in %.2fs",
+                    len(drafts), topic.id, i, len(topics), topic_elapsed,
+                    extra={
+                        "event": "topic_generated", "stage": "generation",
+                        "topic_id": str(topic.id), "drafts": len(drafts),
+                        "progress": f"{i}/{len(topics)}", "elapsed_s": topic_elapsed,
+                    },
+                )
             except Exception:
-                logger.exception("Failed to generate for topic %s", topic.id)
                 counts["errors"] += 1
+                logger.exception(
+                    "Failed to generate for topic %s (%d/%d)", topic.id, i, len(topics),
+                    extra={"event": "generation_error", "stage": "generation", "topic_id": str(topic.id)},
+                )
 
         await session.commit()
-        logger.info("Generation complete: %s", counts)
+
+        elapsed = round(time.monotonic() - t0, 2)
+        logger.info(
+            "Generation complete: %d topics, %d drafts, %d errors in %.2fs",
+            counts["topics_processed"], counts["drafts_created"], counts["errors"], elapsed,
+            extra={
+                "event": "job_complete", "stage": "generation",
+                "topics_processed": counts["topics_processed"],
+                "drafts_created": counts["drafts_created"],
+                "errors": counts["errors"],
+                "elapsed_s": elapsed,
+            },
+        )
 
         # Trigger Notion staging
         await run_notion_staging_job(ctx)
