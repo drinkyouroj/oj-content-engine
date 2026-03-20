@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     notion_db_id: str = ""
     worker_secret: str = ""
 
+    # Logging
+    log_level: str = "INFO"
+    log_format: str = "json"  # "json" or "text"
+
     # RSS/social sources — populated by feature/discovery
     rss_feed_urls: str = ""
     twitter_bearer_token: str = ""

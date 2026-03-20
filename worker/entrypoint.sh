@@ -4,8 +4,16 @@ set -euo pipefail
 echo "Starting OJ Content Engine Worker..."
 echo "  FastAPI on port ${PORT:-8000}"
 echo "  ARQ worker connecting to Redis"
+echo "  Log level: ${LOG_LEVEL:-INFO}"
+echo "  Log format: ${LOG_FORMAT:-json}"
 
-# Run both processes; exit if either dies
-uvicorn worker.app.main:app --host 0.0.0.0 --port "${PORT:-8000}" &
+# Disable uvicorn's default access log — we handle logging ourselves
+uvicorn worker.app.main:app \
+    --host 0.0.0.0 \
+    --port "${PORT:-8000}" \
+    --no-access-log \
+    --log-level warning &
+
 python -m arq worker.jobs.worker.WorkerSettings &
+
 wait -n
