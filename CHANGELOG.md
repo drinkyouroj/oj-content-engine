@@ -27,6 +27,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Exemplar seeding script for Substack articles
 - Model quality comparison script (Groq vs Anthropic)
 - Rubric expansion: sports/Seahawks, media, personal keywords
+- Approval UI: Next.js dashboard with topic review and content approval workflow
+- Token-based authentication via middleware
+- Dashboard overview with stats cards and topic list
+- Topic review page with score breakdown, thesis input, platform draft previews
+- API routes: approve, reject, thesis, topic-action, regenerate, health
+- Notion status sync on approve/reject (best-effort)
+- Worker regeneration endpoint (POST /api/regenerate/{topic_id})
 
 ### Changed
 - Expanded RESONANCE_TAXONOMY with multi-vertical keywords
