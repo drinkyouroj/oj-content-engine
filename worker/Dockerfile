@@ -8,10 +8,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc python3-dev libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy source first so pip install can find the package
-COPY pyproject.toml .
-COPY app/ app/
-COPY jobs/ jobs/
+# Copy all source so pip install can find all worker.* packages
+COPY . .
 
 RUN pip install --no-cache-dir .
 
