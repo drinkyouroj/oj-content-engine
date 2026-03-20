@@ -23,7 +23,7 @@ from worker.discovery.base import BasePoller, RawSignal
 logger = logging.getLogger(__name__)
 
 #: HN Algolia API endpoint for story search
-HN_ALGOLIA_URL = "http://hn.algolia.com/api/v1/search"
+HN_ALGOLIA_URL = "https://hn.algolia.com/api/v1/search"
 
 
 class HNPoller(BasePoller):

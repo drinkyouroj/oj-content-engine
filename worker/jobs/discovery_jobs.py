@@ -12,17 +12,20 @@ from __future__ import annotations
 
 import logging
 
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
+
 from worker.app.config import get_settings
 from worker.app.database import make_engine, make_session_factory
 
 logger = logging.getLogger(__name__)
 
 
-async def _get_session():
+async def _get_session() -> tuple[AsyncSession, AsyncEngine]:
     """Create a one-shot async database session for a job.
 
     Returns:
-        AsyncSession bound to the configured DATABASE_URL.
+        Tuple of (AsyncSession, AsyncEngine) bound to the configured DATABASE_URL.
+        Caller is responsible for closing session and disposing engine.
     """
     settings = get_settings()
     engine = make_engine(settings.database_url)

@@ -11,6 +11,7 @@ Outputs: RawSignal instances with source=RSS persisted to the signals table.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import ClassVar
@@ -62,7 +63,7 @@ class RSSPoller(BasePoller):
 
         for url in self._feed_urls:
             try:
-                feed = feedparser.parse(url)
+                feed = await asyncio.to_thread(feedparser.parse, url)
                 if feed.bozo and not feed.entries:
                     logger.warning("Failed to parse feed %s: %s", url, feed.bozo_exception)
                     continue
