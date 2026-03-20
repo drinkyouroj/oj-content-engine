@@ -48,6 +48,12 @@ export function ThesisInput({ topicId, thesis, thesisProvided }: ThesisInputProp
   const [isEditing, setIsEditing] = useState<boolean>(!thesisProvided);
   // Stores any error message from a failed save
   const [error, setError] = useState<string | null>(null);
+  // Suggested theses returned by the suggest API
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  // Loading state for the suggest API call
+  const [loadingSuggestions, setLoadingSuggestions] = useState<boolean>(false);
+  // Error from the suggest API
+  const [suggestError, setSuggestError] = useState<string | null>(null);
 
   /**
    * POSTs the current draft to /api/thesis and switches to read-only mode on success.
@@ -76,6 +82,36 @@ export function ThesisInput({ topicId, thesis, thesisProvided }: ThesisInputProp
         setError(err instanceof Error ? err.message : "Unexpected error");
       }
     });
+  }
+
+  /**
+   * Calls POST /api/suggest-theses to generate thesis angle suggestions for the topic.
+   * Populates the suggestions array on success, or shows an error on failure.
+   */
+  async function handleSuggestTheses() {
+    setSuggestError(null);
+    setLoadingSuggestions(true);
+
+    try {
+      const res = await fetch("/api/suggest-theses", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ topicId }),
+      });
+
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        setSuggestError(body.error ?? `Suggestion failed (${res.status})`);
+        return;
+      }
+
+      const data = (await res.json()) as { theses: string[] };
+      setSuggestions(data.theses);
+    } catch (err) {
+      setSuggestError(err instanceof Error ? err.message : "Unexpected error");
+    } finally {
+      setLoadingSuggestions(false);
+    }
   }
 
   /** Switches back to edit mode, pre-filling the textarea with the current thesis. */
@@ -123,6 +159,23 @@ export function ThesisInput({ topicId, thesis, thesisProvided }: ThesisInputProp
         </p>
       )}
 
+      {/* Thesis suggestion cards */}
+      {suggestions.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs text-zinc-500">Suggested angles:</p>
+          {suggestions.map((suggestion, idx) => (
+            <button
+              key={idx}
+              type="button"
+              onClick={() => setDraft(suggestion)}
+              className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-3 text-left text-sm text-zinc-300 transition-colors hover:border-[#00B4D8] hover:bg-zinc-800/80 cursor-pointer"
+            >
+              {suggestion}
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="flex items-center gap-2">
         <Button
           onClick={handleSave}
@@ -151,6 +204,31 @@ export function ThesisInput({ topicId, thesis, thesisProvided }: ThesisInputProp
           >
             Cancel
           </Button>
+        )}
+
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleSuggestTheses}
+          disabled={loadingSuggestions || isPending}
+          className="border-[#00B4D8]/50 text-[#00B4D8] hover:bg-[#00B4D8]/10 hover:text-[#00B4D8] disabled:opacity-50"
+        >
+          {loadingSuggestions ? (
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-[#00B4D8] border-t-transparent" />
+              Generating…
+            </span>
+          ) : suggestions.length > 0 ? (
+            "New Suggestions"
+          ) : (
+            "Suggest Theses"
+          )}
+        </Button>
+
+        {suggestError && (
+          <p className="text-xs text-red-400" role="alert">
+            {suggestError}
+          </p>
         )}
       </div>
     </div>

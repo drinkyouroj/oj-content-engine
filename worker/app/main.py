@@ -152,6 +152,71 @@ async def regenerate_topic(
     return {"status": "queued", "topic_id": str(topic_id), "job_id": job.job_id}
 
 
+@app.post("/api/suggest-theses/{topic_id}")
+async def suggest_theses_endpoint(
+    topic_id: UUID,
+    x_worker_secret: str = Header(None),
+):
+    """Generate 3-5 thesis suggestions for a topic.
+
+    Fetches source article, combines with score data, calls Claude Haiku.
+    Requires x-worker-secret header for authentication.
+
+    Estimated runtime: 5-15s (article fetch + LLM call).
+    Failure mode: returns error JSON, does not affect topic state.
+
+    Args:
+        topic_id: UUID of the topic to generate thesis suggestions for.
+        x_worker_secret: Shared secret from the x-worker-secret header.
+
+    Returns:
+        JSON with a list of thesis strings under the key "theses".
+
+    Raises:
+        HTTPException 401: If the secret is missing or incorrect.
+        HTTPException 503: If the session factory is not yet initialised.
+        HTTPException 404: If the topic does not exist.
+        HTTPException 500: If LLM generation fails.
+    """
+    if not x_worker_secret or not _settings or x_worker_secret != _settings.worker_secret:
+        raise HTTPException(status_code=401, detail="Invalid worker secret")
+
+    if _session_factory is None:
+        raise HTTPException(status_code=503, detail="Worker not ready")
+
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+    from worker.app.models.topic import Topic
+    from worker.app.models.scored_signal import ScoredSignal
+    from worker.generation.thesis_suggestions import suggest_theses
+    from worker.generation.llm_client import LLMClient
+
+    async with _session_factory() as session:
+        result = await session.execute(
+            select(Topic)
+            .where(Topic.id == topic_id)
+            .options(
+                selectinload(Topic.scored_signal).selectinload(ScoredSignal.signal)
+            )
+        )
+        topic = result.scalars().first()
+
+    if topic is None:
+        raise HTTPException(status_code=404, detail="Topic not found")
+
+    client = LLMClient(
+        anthropic_api_key=_settings.anthropic_api_key,
+        groq_api_key=_settings.groq_api_key,
+    )
+
+    try:
+        theses = await suggest_theses(topic, client)
+        return {"theses": theses}
+    except Exception as exc:
+        logger.exception("Failed to generate thesis suggestions for %s", topic_id)
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
 @app.get("/health")
 async def health():
     """Health check endpoint for Railway.
