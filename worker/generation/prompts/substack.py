@@ -124,18 +124,28 @@ generation.
   [IMAGE: <generation prompt>]
   [ALT: <alt text>]
   [CAPTION: <caption>]
-- Footnote every statistic with a source URL. If you cannot find a real source, \
-write [SOURCE NEEDED] instead of fabricating one.
 - End the piece with either a thought-provoking question OR a clear declarative \
 point. Not both. Pick the one that lands harder.
 
+SOURCES AND FOOTNOTES (MANDATORY):
+- Every statistic, data point, or factual claim MUST have an inline footnote \
+marker like [1], [2], [3] in the article body where the claim appears.
+- The article MUST end with a SOURCES section listing every footnoted source \
+with its full URL. If you cannot find a real source URL, write [SOURCE NEEDED] \
+instead of fabricating one. Do NOT skip this section.
+- Example inline usage: "Stablecoin volume hit $46 trillion annually.[1]"
+- The SOURCES section is NOT optional. An article without sources is incomplete.
+
 OUTPUT FORMAT:
-Return the article as plain text with the following structure:
-TITLE: <title>
-SUBTITLE: <subtitle>
+Return the article as plain text with EXACTLY this structure:
+
+TITLE: <title text, 60 chars max>
+SUBTITLE: <subtitle text, 150 chars max>
 TEMPLATE: <template name>
 
-<article body with image markers>
+<article body with [IMAGE] markers and inline footnote markers like [1], [2]>
 
-FOOTNOTES:
-<numbered list of source URLs>"""
+SOURCES:
+[1] Description — https://example.com/source-url
+[2] Description — https://example.com/another-source
+[3] Description — [SOURCE NEEDED]"""
