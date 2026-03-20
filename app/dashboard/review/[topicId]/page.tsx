@@ -124,9 +124,8 @@ export default async function ReviewPage({
     };
   });
 
-  // Default tab to the first draft's platform, or empty string
-  const defaultTab =
-    draftsWithMeta.length > 0 ? draftsWithMeta[0].platformKey : "";
+  // base-ui Tabs uses numeric indices, not string values
+  const defaultTab = 0;
 
   return (
     <div className="mx-auto max-w-4xl space-y-8">
@@ -236,21 +235,21 @@ export default async function ReviewPage({
         ) : (
           <Tabs defaultValue={defaultTab}>
             <TabsList className="mb-4">
-              {draftsWithMeta.map((draft) => {
+              {draftsWithMeta.map((draft, index) => {
                 const meta = PLATFORM_META[draft.platformKey];
                 const label = meta
                   ? `${meta.emoji} ${meta.label}`
                   : draft.platformKey;
                 return (
-                  <TabsTrigger key={draft.id} value={draft.platformKey}>
+                  <TabsTrigger key={draft.id} value={index}>
                     {label}
                   </TabsTrigger>
                 );
               })}
             </TabsList>
 
-            {draftsWithMeta.map((draft) => (
-              <TabsContent key={draft.id} value={draft.platformKey}>
+            {draftsWithMeta.map((draft, index) => (
+              <TabsContent key={draft.id} value={index}>
                 <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-6">
                   <DraftPreview
                     content={draft.content ?? ""}
