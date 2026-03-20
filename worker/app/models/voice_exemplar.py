@@ -30,7 +30,7 @@ class VoiceExemplar(UUIDPrimaryKey, TimestampMixin, Base):
 
     content: Mapped[str] = mapped_column(Text, nullable=False)
     platform: Mapped[Platform] = mapped_column(
-        Enum(Platform, name="platform", native_enum=True, create_type=False),
+        Enum(Platform, name="platform", native_enum=True, create_type=False, values_callable=lambda e: [m.value for m in e]),
         nullable=False,
     )
     active: Mapped[bool] = mapped_column(

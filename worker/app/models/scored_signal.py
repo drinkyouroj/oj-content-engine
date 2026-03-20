@@ -51,7 +51,7 @@ class ScoredSignal(UUIDPrimaryKey, TimestampMixin, Base):
     score_breakdown: Mapped[dict] = mapped_column(JSONB, nullable=False)
     composite_score: Mapped[float] = mapped_column(Numeric(5, 2), nullable=False)
     status: Mapped[ScoringStatus] = mapped_column(
-        Enum(ScoringStatus, name="scoring_status", native_enum=True),
+        Enum(ScoringStatus, name="scoring_status", native_enum=True, values_callable=lambda e: [m.value for m in e]),
         nullable=False,
         default=ScoringStatus.PENDING,
         server_default="pending",

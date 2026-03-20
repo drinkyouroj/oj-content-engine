@@ -52,7 +52,7 @@ class Topic(UUIDPrimaryKey, TimestampMixin, Base):
         ForeignKey("scored_signals.id", ondelete="CASCADE"), nullable=False
     )
     status: Mapped[TopicStatus] = mapped_column(
-        Enum(TopicStatus, name="topic_status", native_enum=True), nullable=False
+        Enum(TopicStatus, name="topic_status", native_enum=True, values_callable=lambda e: [m.value for m in e]), nullable=False
     )
     thesis: Mapped[str | None] = mapped_column(Text, nullable=True)
     thesis_provided: Mapped[bool] = mapped_column(
