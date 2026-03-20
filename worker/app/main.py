@@ -11,11 +11,13 @@ from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
+from uuid import UUID
 
 from arq.connections import RedisSettings
-from fastapi import FastAPI
+from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
+from sqlalchemy import update as sa_update
 
 from worker.app.config import get_settings
 from worker.app.database import make_engine, make_session_factory
@@ -94,6 +96,59 @@ async def check_redis() -> bool:
     except Exception:
         logger.exception("Redis health check failed")
         return False
+
+
+@app.post("/api/regenerate/{topic_id}")
+async def regenerate_topic(
+    topic_id: UUID,
+    x_worker_secret: str = Header(None),
+):
+    """Regenerate content for a specific topic.
+
+    Resets topic status to 'queued' and enqueues a generation job via ARQ.
+    Called by the Vercel approval UI when the reviewer requests new drafts,
+    optionally after saving a thesis via /api/thesis.
+
+    Requires the x-worker-secret header to match WORKER_SECRET.
+
+    Estimated runtime: <200ms (DB write + Redis enqueue only; generation is async).
+    Retry behaviour: not retried — the caller (Vercel route) surfaces errors directly.
+    Failure mode: 401 on bad secret, 503 if lifespan not complete, 500 on DB/Redis error.
+
+    Args:
+        topic_id: UUID of the topic to regenerate.
+        x_worker_secret: Shared secret from the x-worker-secret header.
+
+    Returns:
+        JSON with status, topic_id, and ARQ job_id.
+
+    Raises:
+        HTTPException 401: If the secret is missing or incorrect.
+        HTTPException 503: If the session factory is not yet initialised.
+    """
+    settings = get_settings()
+    if not x_worker_secret or x_worker_secret != settings.worker_secret:
+        raise HTTPException(status_code=401, detail="Invalid worker secret")
+
+    if _session_factory is None:
+        raise HTTPException(status_code=503, detail="Worker not ready")
+
+    from worker.app.models.topic import Topic, TopicStatus
+
+    async with _session_factory() as session:
+        await session.execute(
+            sa_update(Topic).where(Topic.id == topic_id).values(status=TopicStatus.QUEUED)
+        )
+        await session.commit()
+
+    # Enqueue ARQ generation job using the lifespan-managed Redis settings
+    from arq.connections import ArqRedis, create_pool
+
+    pool: ArqRedis = await create_pool(_redis_settings)
+    job = await pool.enqueue_job("run_generation_job")
+    await pool.close()
+
+    return {"status": "queued", "topic_id": str(topic_id), "job_id": job.job_id}
 
 
 @app.get("/health")
