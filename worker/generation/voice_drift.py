@@ -41,7 +41,13 @@ adverbs, one-word beats)
 - No concept explained twice
 - Ending: thought-provoking question OR clear point, not both
 
-Output the full revised article in markdown format. Nothing else.\
+IMPORTANT — preserve these structural elements exactly:
+- TITLE: and SUBTITLE: lines at the top
+- All [IMAGE:], [ALT:], and [CAPTION:] markers
+- All inline footnote markers like [1], [2], [3]
+- The SOURCES: section at the end with all source URLs
+
+Output the full revised article in the same format as the input. Nothing else.\
 """
 
 
