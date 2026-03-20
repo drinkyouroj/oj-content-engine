@@ -88,6 +88,11 @@ RESONANCE_TAXONOMY: dict[str, dict[str, list[str]]] = {
             "congress",
             "executive order",
             "eu ai act",
+            # Seahawks/NFL
+            "seahawks", "seattle seahawks", "nfl", "mike macdonald",
+            "geno smith", "jaxon smith-njigba", "nfc west",
+            # Media
+            "media criticism", "false balance", "journalism ethics",
         ],
     },
     "adjacent": {
@@ -105,6 +110,10 @@ RESONANCE_TAXONOMY: dict[str, dict[str, list[str]]] = {
             "creator economy",
             "indie hacker",
             "solopreneur",
+            # Broader sports/media
+            "salary cap", "nfl draft", "football analytics",
+            "narrative framing",
+            "neurodivergence", "autism", "indie creator",
         ],
     },
 }
