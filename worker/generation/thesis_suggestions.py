@@ -59,8 +59,16 @@ async def _fetch_article(url: str) -> str:
         Empty string if fetch or parse fails.
     """
     try:
-        async with httpx.AsyncClient(follow_redirects=True, timeout=10.0) as client:
-            response = await client.get(url)
+        # Use old.reddit.com for Reddit URLs (less aggressive blocking)
+        fetch_url = url
+        if "reddit.com" in fetch_url and "old.reddit.com" not in fetch_url:
+            fetch_url = fetch_url.replace("www.reddit.com", "old.reddit.com").replace("reddit.com", "old.reddit.com")
+
+        headers = {
+            "User-Agent": "Mozilla/5.0 (compatible; OJContentEngine/0.3; +https://drinkyouroj.substack.com)",
+        }
+        async with httpx.AsyncClient(follow_redirects=True, timeout=10.0, headers=headers) as client:
+            response = await client.get(fetch_url)
             response.raise_for_status()
     except Exception as exc:
         logger.warning("Failed to fetch article %s: %s", url, exc)
