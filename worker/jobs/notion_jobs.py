@@ -48,6 +48,7 @@ async def run_notion_staging_job(ctx: dict) -> dict[str, int]:
             api_key=settings.notion_api_key,
             database_id=settings.notion_db_id,
         )
+        await client.setup_database()
         counts = await stage_drafts(session, client)
         await session.commit()
         logger.info("Notion staging complete: %s", counts)

@@ -91,6 +91,46 @@ class NotionClient:
         self._database_id = database_id
         self._client = Client(auth=api_key)
 
+    async def setup_database(self) -> None:
+        """Ensure the target database has all required properties.
+
+        Creates any missing properties on the Notion database via the
+        databases.update API. Safe to call multiple times — Notion ignores
+        properties that already exist.
+
+        Should be called once before the first staging run.
+        """
+        properties = {
+            "Platform": {"select": {"options": [
+                {"name": "Substack"}, {"name": "Twitter"},
+                {"name": "Linkedin"}, {"name": "Instagram"},
+            ]}},
+            "Status": {"select": {"options": [
+                {"name": "Draft"}, {"name": "Review"},
+                {"name": "Approved"}, {"name": "Published"}, {"name": "Killed"},
+            ]}},
+            "Composite Score": {"number": {}},
+            "Score Breakdown": {"rich_text": {}},
+            "Generated At": {"date": {}},
+            "Topic ID": {"rich_text": {}},
+            "Thesis Provided": {"checkbox": {}},
+            "Model Used": {"rich_text": {}},
+            "Token Cost": {"number": {}},
+        }
+
+        try:
+            await asyncio.to_thread(
+                self._client.databases.update,
+                database_id=self._database_id,
+                properties=properties,
+            )
+            logger.info("Database properties ensured for %s", self._database_id)
+        except Exception as exc:
+            logger.error("Failed to update database properties: %s", exc)
+            raise NotionWriteError(f"Failed to setup database: {exc}") from exc
+        finally:
+            await asyncio.sleep(_RATE_LIMIT_DELAY)
+
     async def create_page(
         self,
         title: str,
