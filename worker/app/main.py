@@ -21,6 +21,10 @@ from sqlalchemy import update as sa_update
 
 from worker.app.config import get_settings
 from worker.app.database import make_engine, make_session_factory
+from worker.app.logging_config import setup_logging
+
+# Configure structured logging before anything else logs
+setup_logging()
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +48,15 @@ async def lifespan(app: FastAPI):
     _session_factory = make_session_factory(_engine)
     _redis_settings = RedisSettings.from_dsn(_settings.arq_redis_url)
 
-    logger.info("Worker started — database and Redis connections ready")
+    logger.info(
+        "Worker started",
+        extra={
+            "event": "startup",
+            "component": "fastapi",
+            "database": bool(_engine),
+            "redis": bool(_redis_settings),
+        },
+    )
     yield
 
     await _engine.dispose()
@@ -52,7 +64,7 @@ async def lifespan(app: FastAPI):
     _session_factory = None
     _redis_settings = None
     _settings = None
-    logger.info("Worker stopped — connections closed")
+    logger.info("Worker stopped", extra={"event": "shutdown", "component": "fastapi"})
 
 
 app = FastAPI(
@@ -215,6 +227,112 @@ async def suggest_theses_endpoint(
     except Exception as exc:
         logger.exception("Failed to generate thesis suggestions for %s", topic_id)
         raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.post("/api/generate-social/{topic_id}/{platform}")
+async def generate_social_endpoint(
+    topic_id: UUID,
+    platform: str,
+    x_worker_secret: str = Header(None),
+):
+    """Generate social platform content derived from the Substack article.
+
+    Fetches the topic and its Substack draft, then calls Claude Haiku 4.5 to
+    generate content for the requested social platform using the Substack
+    article as source context. This is a synchronous call that blocks until
+    generation completes (estimated 5-15s).
+
+    Called by the Vercel dashboard when Justin clicks a per-platform "Generate"
+    button. Only available after a Substack draft exists for the topic.
+
+    Estimated runtime: 5-15s (LLM call with Haiku 4.5).
+    Failure mode: returns error JSON, does not affect topic status.
+
+    Args:
+        topic_id: UUID of the topic.
+        platform: Target platform: "twitter", "linkedin", or "instagram".
+        x_worker_secret: Shared secret from the x-worker-secret header.
+
+    Returns:
+        JSON with the created draft ID and platform.
+
+    Raises:
+        HTTPException 401: If the secret is missing or incorrect.
+        HTTPException 400: If the platform is invalid or not a social platform.
+        HTTPException 404: If the topic or Substack draft is not found.
+        HTTPException 500: If LLM generation fails.
+    """
+    if not x_worker_secret or not _settings or x_worker_secret != _settings.worker_secret:
+        raise HTTPException(status_code=401, detail="Invalid worker secret")
+
+    if _session_factory is None:
+        raise HTTPException(status_code=503, detail="Worker not ready")
+
+    valid_platforms = {"twitter", "linkedin", "instagram"}
+    if platform not in valid_platforms:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid platform '{platform}'. Must be one of: {', '.join(sorted(valid_platforms))}",
+        )
+
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+    from worker.app.models.content_draft import ContentDraft, Platform as PlatformEnum
+    from worker.app.models.scored_signal import ScoredSignal
+    from worker.app.models.topic import Topic
+    from worker.generation.engine import generate_social_for_topic
+    from worker.generation.llm_client import LLMClient
+
+    async with _session_factory() as session:
+        # Fetch topic with signal data
+        result = await session.execute(
+            select(Topic)
+            .where(Topic.id == topic_id)
+            .options(
+                selectinload(Topic.scored_signal).selectinload(ScoredSignal.signal)
+            )
+        )
+        topic = result.scalars().first()
+
+        if topic is None:
+            raise HTTPException(status_code=404, detail="Topic not found")
+
+        # Fetch the Substack draft for this topic
+        draft_result = await session.execute(
+            select(ContentDraft)
+            .where(ContentDraft.topic_id == topic_id)
+            .where(ContentDraft.platform == PlatformEnum.SUBSTACK)
+        )
+        substack_draft = draft_result.scalars().first()
+
+        if substack_draft is None:
+            raise HTTPException(
+                status_code=404,
+                detail="No Substack draft found. Generate Substack content first.",
+            )
+
+        platform_enum = PlatformEnum(platform)
+
+        client = LLMClient(
+            anthropic_api_key=_settings.anthropic_api_key,
+            groq_api_key=_settings.groq_api_key,
+        )
+
+        try:
+            draft = await generate_social_for_topic(
+                topic=topic,
+                platform=platform_enum,
+                substack_content=substack_draft.content,
+                session=session,
+                llm_client=client,
+            )
+            await session.commit()
+            return {"draft_id": str(draft.id), "platform": platform}
+        except Exception as exc:
+            logger.exception(
+                "Failed to generate %s content for topic %s", platform, topic_id
+            )
+            raise HTTPException(status_code=500, detail=str(exc))
 
 
 @app.get("/health")

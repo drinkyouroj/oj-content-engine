@@ -10,6 +10,7 @@ Implements PRD Section 3 (Topic Triage Rubric — batch application).
 from __future__ import annotations
 
 import logging
+import time
 
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
@@ -49,11 +50,32 @@ async def run_triage_job(ctx: dict) -> dict[str, int]:
     """
     from worker.triage.engine import run_triage
 
+    t0 = time.monotonic()
+    logger.info("Starting triage", extra={"event": "job_start", "stage": "triage"})
+
     session, engine = await _get_session()
     try:
         counts = await run_triage(session)
-        logger.info("Triage job complete: %s", counts)
+        elapsed = round(time.monotonic() - t0, 2)
+        logger.info(
+            "Triage complete: queued=%d, review=%d, archived=%d in %.2fs",
+            counts.get("queued", 0), counts.get("review", 0), counts.get("archived", 0), elapsed,
+            extra={
+                "event": "job_complete", "stage": "triage",
+                "queued": counts.get("queued", 0),
+                "review": counts.get("review", 0),
+                "archived": counts.get("archived", 0),
+                "elapsed_s": elapsed,
+            },
+        )
         return counts
+    except Exception:
+        elapsed = round(time.monotonic() - t0, 2)
+        logger.exception(
+            "Triage failed after %.2fs", elapsed,
+            extra={"event": "job_error", "stage": "triage", "elapsed_s": elapsed},
+        )
+        raise
     finally:
         await session.close()
         await engine.dispose()

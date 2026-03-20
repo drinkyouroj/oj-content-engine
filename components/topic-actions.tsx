@@ -38,10 +38,21 @@ const SCORING_DIMENSIONS = [
   { value: "brand_angle_availability", label: "Brand Angle" },
 ] as const;
 
+/** Social platforms available for on-demand generation. */
+const SOCIAL_PLATFORMS = [
+  { key: "twitter" as const, label: "Twitter", emoji: "\uD83D\uDC26" },
+  { key: "linkedin" as const, label: "LinkedIn", emoji: "\uD83D\uDCBC" },
+  { key: "instagram" as const, label: "Instagram", emoji: "\uD83D\uDCF7" },
+];
+
 interface TopicActionsProps {
   topicId: string;
   topicStatus: string;
   hasDrafts: boolean;
+  /** Whether a Substack draft exists (enables social generation buttons). */
+  hasSubstackDraft: boolean;
+  /** List of platform keys that already have drafts generated. */
+  existingPlatforms: string[];
 }
 
 /**
@@ -63,7 +74,7 @@ function Spinner() {
  * @param topicId     UUID of the topic being reviewed
  * @param topicStatus Current status string (used to conditionally disable actions)
  */
-export function TopicActions({ topicId, topicStatus, hasDrafts }: TopicActionsProps) {
+export function TopicActions({ topicId, topicStatus, hasDrafts, hasSubstackDraft, existingPlatforms }: TopicActionsProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
@@ -433,6 +444,48 @@ export function TopicActions({ topicId, topicStatus, hasDrafts }: TopicActionsPr
           )}
         </Button>
       </div>
+
+      {/* ---- Social Content Generation (on-demand) ---- */}
+      {hasSubstackDraft && (
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-zinc-500">
+            Generate social content from Substack article (Claude Haiku 4.5)
+          </p>
+          <div className="flex flex-wrap items-center gap-3">
+            {SOCIAL_PLATFORMS.map(({ key, label, emoji }) => {
+              const alreadyExists = existingPlatforms.includes(key);
+              const actionKey = `social-${key}`;
+              return (
+                <Button
+                  key={key}
+                  onClick={() =>
+                    performAction(
+                      "/api/generate-social",
+                      { topicId, platform: key },
+                      actionKey,
+                      false
+                    )
+                  }
+                  disabled={isDisabled}
+                  variant="outline"
+                  className="border-zinc-700 text-zinc-300 hover:border-[#FF6B35]/50 hover:text-[#FF6B35] disabled:opacity-50"
+                >
+                  {activeAction === actionKey ? (
+                    <span className="flex items-center gap-1.5">
+                      <Spinner />
+                      Generating...
+                    </span>
+                  ) : (
+                    <span>
+                      {emoji} {alreadyExists ? `Regenerate ${label}` : `Generate ${label}`}
+                    </span>
+                  )}
+                </Button>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

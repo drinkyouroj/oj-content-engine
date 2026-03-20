@@ -42,9 +42,9 @@ logger = logging.getLogger(__name__)
 
 GENERATION_MODELS: dict[str, dict[str, str]] = {
     "substack": {"provider": "anthropic", "model": "claude-sonnet-4-6"},
-    "twitter": {"provider": "groq", "model": "llama-3.3-70b-versatile"},
-    "linkedin": {"provider": "groq", "model": "llama-3.3-70b-versatile"},
-    "instagram": {"provider": "groq", "model": "llama-3.3-70b-versatile"},
+    "twitter": {"provider": "anthropic", "model": "claude-haiku-4-5"},
+    "linkedin": {"provider": "anthropic", "model": "claude-haiku-4-5"},
+    "instagram": {"provider": "anthropic", "model": "claude-haiku-4-5"},
     "substack_critique": {"provider": "anthropic", "model": "claude-sonnet-4-6"},
     "thesis_suggest": {"provider": "anthropic", "model": "claude-haiku-4-5"},
 }

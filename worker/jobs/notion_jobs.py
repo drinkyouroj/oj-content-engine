@@ -8,6 +8,7 @@ Implements PRD Section 6 (Notion Staging Schema).
 from __future__ import annotations
 
 import logging
+import time
 
 from worker.app.config import get_settings
 from worker.app.database import make_engine, make_session_factory
@@ -33,10 +34,16 @@ async def run_notion_staging_job(ctx: dict) -> dict[str, int]:
     Retry behavior: ARQ default (3 retries with backoff).
     Failure mode: Per-draft errors logged as system_alerts.
     """
+    t0 = time.monotonic()
+    logger.info("Starting Notion staging", extra={"event": "job_start", "stage": "notion"})
+
     settings = get_settings()
 
     if not settings.notion_api_key or not settings.notion_db_id:
-        logger.warning("Notion API key or DB ID not configured — skipping staging")
+        logger.warning(
+            "Notion API key or DB ID not configured — skipping staging",
+            extra={"event": "job_skipped", "stage": "notion", "reason": "missing_config"},
+        )
         return {"staged": 0, "errors": 0}
 
     engine = make_engine(settings.database_url)
@@ -51,8 +58,26 @@ async def run_notion_staging_job(ctx: dict) -> dict[str, int]:
         await client.setup_database()
         counts = await stage_drafts(session, client)
         await session.commit()
-        logger.info("Notion staging complete: %s", counts)
+
+        elapsed = round(time.monotonic() - t0, 2)
+        logger.info(
+            "Notion staging complete: %d staged, %d errors in %.2fs",
+            counts.get("staged", 0), counts.get("errors", 0), elapsed,
+            extra={
+                "event": "job_complete", "stage": "notion",
+                "staged": counts.get("staged", 0),
+                "errors": counts.get("errors", 0),
+                "elapsed_s": elapsed,
+            },
+        )
         return counts
+    except Exception:
+        elapsed = round(time.monotonic() - t0, 2)
+        logger.exception(
+            "Notion staging failed after %.2fs", elapsed,
+            extra={"event": "job_error", "stage": "notion", "elapsed_s": elapsed},
+        )
+        raise
     finally:
         await session.close()
         await engine.dispose()

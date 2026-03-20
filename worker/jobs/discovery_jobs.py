@@ -11,6 +11,7 @@ Implements PRD Section 2 (Trend Discovery Layer — scheduled polling).
 from __future__ import annotations
 
 import logging
+import time
 
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
@@ -51,12 +52,27 @@ async def poll_rss(ctx: dict) -> int:
     """
     from worker.discovery.rss_poller import RSSPoller
 
+    t0 = time.monotonic()
+    logger.info("Starting RSS poll", extra={"event": "job_start", "stage": "discovery", "source": "rss"})
+
     session, engine = await _get_session()
     try:
         poller = RSSPoller()
         count = await poller.run(session)
-        logger.info("poll_rss completed: %d new signals", count)
+        elapsed = round(time.monotonic() - t0, 2)
+        logger.info(
+            "RSS poll complete: %d new signals in %.2fs",
+            count, elapsed,
+            extra={"event": "job_complete", "stage": "discovery", "source": "rss", "signals": count, "elapsed_s": elapsed},
+        )
         return count
+    except Exception:
+        elapsed = round(time.monotonic() - t0, 2)
+        logger.exception(
+            "RSS poll failed after %.2fs", elapsed,
+            extra={"event": "job_error", "stage": "discovery", "source": "rss", "elapsed_s": elapsed},
+        )
+        raise
     finally:
         await session.close()
         await engine.dispose()
@@ -65,7 +81,7 @@ async def poll_rss(ctx: dict) -> int:
 async def poll_reddit(ctx: dict) -> int:
     """ARQ job: run the Reddit poller.
 
-    Polls configured subreddits for hot posts and persists new signals.
+    Polls configured subreddits for hot posts via RSS and persists new signals.
 
     Args:
         ctx: ARQ job context dictionary.
@@ -79,12 +95,27 @@ async def poll_reddit(ctx: dict) -> int:
     """
     from worker.discovery.reddit_poller import RedditPoller
 
+    t0 = time.monotonic()
+    logger.info("Starting Reddit poll", extra={"event": "job_start", "stage": "discovery", "source": "reddit"})
+
     session, engine = await _get_session()
     try:
         poller = RedditPoller()
         count = await poller.run(session)
-        logger.info("poll_reddit completed: %d new signals", count)
+        elapsed = round(time.monotonic() - t0, 2)
+        logger.info(
+            "Reddit poll complete: %d new signals in %.2fs",
+            count, elapsed,
+            extra={"event": "job_complete", "stage": "discovery", "source": "reddit", "signals": count, "elapsed_s": elapsed},
+        )
         return count
+    except Exception:
+        elapsed = round(time.monotonic() - t0, 2)
+        logger.exception(
+            "Reddit poll failed after %.2fs", elapsed,
+            extra={"event": "job_error", "stage": "discovery", "source": "reddit", "elapsed_s": elapsed},
+        )
+        raise
     finally:
         await session.close()
         await engine.dispose()
@@ -107,12 +138,27 @@ async def poll_hn(ctx: dict) -> int:
     """
     from worker.discovery.hn_poller import HNPoller
 
+    t0 = time.monotonic()
+    logger.info("Starting HN poll", extra={"event": "job_start", "stage": "discovery", "source": "hn"})
+
     session, engine = await _get_session()
     try:
         poller = HNPoller()
         count = await poller.run(session)
-        logger.info("poll_hn completed: %d new signals", count)
+        elapsed = round(time.monotonic() - t0, 2)
+        logger.info(
+            "HN poll complete: %d new signals in %.2fs",
+            count, elapsed,
+            extra={"event": "job_complete", "stage": "discovery", "source": "hn", "signals": count, "elapsed_s": elapsed},
+        )
         return count
+    except Exception:
+        elapsed = round(time.monotonic() - t0, 2)
+        logger.exception(
+            "HN poll failed after %.2fs", elapsed,
+            extra={"event": "job_error", "stage": "discovery", "source": "hn", "elapsed_s": elapsed},
+        )
+        raise
     finally:
         await session.close()
         await engine.dispose()
@@ -136,12 +182,27 @@ async def poll_twitter(ctx: dict) -> int:
     """
     from worker.discovery.twitter_poller import TwitterPoller
 
+    t0 = time.monotonic()
+    logger.info("Starting Twitter poll", extra={"event": "job_start", "stage": "discovery", "source": "twitter"})
+
     session, engine = await _get_session()
     try:
         poller = TwitterPoller()
         count = await poller.run(session)
-        logger.info("poll_twitter completed: %d new signals", count)
+        elapsed = round(time.monotonic() - t0, 2)
+        logger.info(
+            "Twitter poll complete: %d new signals in %.2fs",
+            count, elapsed,
+            extra={"event": "job_complete", "stage": "discovery", "source": "twitter", "signals": count, "elapsed_s": elapsed},
+        )
         return count
+    except Exception:
+        elapsed = round(time.monotonic() - t0, 2)
+        logger.exception(
+            "Twitter poll failed after %.2fs", elapsed,
+            extra={"event": "job_error", "stage": "discovery", "source": "twitter", "elapsed_s": elapsed},
+        )
+        raise
     finally:
         await session.close()
         await engine.dispose()

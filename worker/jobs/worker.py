@@ -14,7 +14,11 @@ import logging
 from arq.connections import RedisSettings
 from arq.cron import cron
 
+from worker.app.logging_config import setup_logging
 from worker.jobs.discovery_jobs import poll_hn, poll_reddit, poll_rss, poll_twitter
+
+# Configure structured logging for the ARQ worker process
+setup_logging()
 
 logger = logging.getLogger(__name__)
 

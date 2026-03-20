@@ -1,8 +1,14 @@
 """Content generation engine orchestrator.
 
-Ties together vertical detection, exemplar selection, prompt assembly,
-LLM generation, and voice-drift critique to produce ContentDraft rows
-for all four platforms (Substack, Twitter/X, LinkedIn, Instagram).
+Implements a two-phase generation flow:
+
+Phase 1 (automatic): Topic -> Thesis -> Substack article only.
+    Called by the ARQ generation job when topics are queued.
+
+Phase 2 (on-demand): Substack -> Social platform content.
+    Called per-platform when Justin clicks "Generate" on the dashboard.
+    Uses the Substack article as source context so social posts are
+    derivative of the long-form piece.
 
 Implements PRD Section 4 (Content Generation Engine).
 
@@ -12,7 +18,7 @@ Inputs:
     - LLMClient for LLM calls
 
 Outputs:
-    - List of ContentDraft instances (one per successfully generated platform)
+    - ContentDraft instances
 
 Environment variables:
     See worker/generation/llm_client.py for model routing overrides.
@@ -41,11 +47,10 @@ from worker.generation.voice_drift import run_voice_critique
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Platform -> prompt builder mapping
+# Platform -> prompt builder mapping (social platforms only)
 # ---------------------------------------------------------------------------
 
-_PLATFORM_BUILDERS = {
-    Platform.SUBSTACK: build_substack_prompt,
+_SOCIAL_PLATFORM_BUILDERS = {
     Platform.TWITTER: build_twitter_prompt,
     Platform.LINKEDIN: build_linkedin_prompt,
     Platform.INSTAGRAM: build_instagram_prompt,
@@ -54,7 +59,7 @@ _PLATFORM_BUILDERS = {
 # Rough cost-per-token estimates by provider (USD)
 _TOKEN_COST_RATES: dict[str, float] = {
     "groq": 0.0,
-    "anthropic": 0.000008,  # ~$8/1M tokens blended estimate
+    "anthropic": 0.000008,  # ~$8/1M tokens blended (Sonnet); Haiku is ~$1/1M
 }
 
 
@@ -89,14 +94,17 @@ async def generate_for_topic(
     session: AsyncSession,
     llm_client: LLMClient,
 ) -> list[ContentDraft]:
-    """Generate content drafts for all platforms from a triaged topic.
+    """Generate Substack draft only from a triaged topic (Phase 1).
 
     Orchestration flow:
     1. Detect topic vertical from title/body keywords.
     2. Select 3-5 voice exemplars by vertical match.
-    3. For each platform, build prompts, call LLM, optionally run voice-drift
-       critique (Substack only), and create a ContentDraft row.
-    4. On per-platform LLM failure: log, create a SystemAlert, skip, continue.
+    3. Build Substack prompt, call LLM, run voice-drift critique.
+    4. Create a ContentDraft row for the Substack article.
+
+    Social platform content (Twitter, LinkedIn, Instagram) is NOT generated
+    here. Those are generated on-demand via generate_social_for_topic() when
+    the reviewer explicitly requests them from the dashboard.
 
     Implements PRD Section 4 (Content Generation Engine).
 
@@ -106,12 +114,11 @@ async def generate_for_topic(
         llm_client: Configured LLMClient for generation calls.
 
     Returns:
-        List of ContentDraft instances that were successfully created.
-        May be fewer than 4 if some platforms failed.
+        List containing the Substack ContentDraft if successful, empty on failure.
 
     Raises:
-        No exceptions are raised to the caller. Per-platform failures are
-        logged and recorded as SystemAlert rows.
+        No exceptions are raised to the caller. Failures are logged and
+        recorded as SystemAlert rows.
     """
     signal = topic.scored_signal.signal
     title = signal.title
@@ -127,107 +134,204 @@ async def generate_for_topic(
     # Step 2: Update topic status to GENERATING
     topic.status = TopicStatus.GENERATING
 
-    # Step 3: Build system prompt (shared across platforms)
+    # Step 3: Build system prompt
     system_prompt = build_system_prompt()
 
     drafts: list[ContentDraft] = []
 
-    for platform, build_prompt in _PLATFORM_BUILDERS.items():
-        platform_key = platform.value  # e.g. "substack"
+    try:
+        # 3a: Get model config for Substack
+        config = get_model_config("substack")
+        provider = config["provider"]
+        model = config["model"]
 
-        try:
-            # 3a: Get model config
-            config = get_model_config(platform_key)
-            provider = config["provider"]
-            model = config["model"]
+        # 3b: Select exemplars
+        exemplars = await select_exemplars(session, "substack", vertical)
+        exemplar_texts = [e.content for e in exemplars]
 
-            # 3b: Select exemplars for this platform
-            exemplars = await select_exemplars(session, platform_key, vertical)
-            exemplar_texts = [e.content for e in exemplars]
+        # 3c: Build Substack prompt
+        user_prompt = build_substack_prompt(
+            topic_title=title,
+            topic_body=body,
+            score_breakdown=score_breakdown,
+            thesis=thesis,
+            exemplars=exemplar_texts,
+        )
 
-            # 3c: Build platform-specific user prompt
-            user_prompt = build_prompt(
-                topic_title=title,
-                topic_body=body,
-                score_breakdown=score_breakdown,
-                thesis=thesis,
-                exemplars=exemplar_texts,
-            )
+        # 3d: Call LLM
+        response = await llm_client.generate(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            provider=provider,
+            model=model,
+        )
 
-            # 3d: Call LLM
-            response = await llm_client.generate(
-                system_prompt=system_prompt,
-                user_prompt=user_prompt,
-                provider=provider,
-                model=model,
-            )
+        content = response.content
+        total_tokens = response.total_tokens
 
-            content = response.content
-            total_tokens = response.total_tokens
+        # 3e: Voice-drift critique (Substack always gets this)
+        critique_config = get_model_config("substack_critique")
+        critique_response = await run_voice_critique(
+            draft=content,
+            llm_client=llm_client,
+            provider=critique_config["provider"],
+            model=critique_config["model"],
+        )
+        content = critique_response.content
+        total_tokens += critique_response.total_tokens
 
-            # 3e: Substack-only voice-drift critique
-            voice_drift_applied = False
-            if platform == Platform.SUBSTACK:
-                critique_config = get_model_config("substack_critique")
-                critique_response = await run_voice_critique(
-                    draft=content,
-                    llm_client=llm_client,
-                    provider=critique_config["provider"],
-                    model=critique_config["model"],
-                )
-                content = critique_response.content
-                total_tokens += critique_response.total_tokens
-                voice_drift_applied = True
+        # 3f: Build generation metadata
+        generation_metadata: dict = {
+            "prompt_version": _prompt_version_hash(user_prompt),
+            "voice_drift_applied": True,
+        }
+        if not topic.thesis_provided:
+            generation_metadata["ai_originated"] = True
+        if not exemplars:
+            generation_metadata["no_exemplars_available"] = True
 
-            # 3f: Build generation metadata
-            generation_metadata: dict = {
-                "prompt_version": _prompt_version_hash(user_prompt),
-            }
-            if not topic.thesis_provided:
-                generation_metadata["ai_originated"] = True
-            if not exemplars:
-                generation_metadata["no_exemplars_available"] = True
-            if voice_drift_applied:
-                generation_metadata["voice_drift_applied"] = True
+        # 3g: Create ContentDraft
+        draft = ContentDraft(
+            topic_id=topic.id,
+            platform=Platform.SUBSTACK,
+            content=content,
+            status=DraftStatus.DRAFT,
+            model_used=f"{provider}/{model}",
+            token_cost=_estimate_token_cost(total_tokens, provider),
+            generated_at=datetime.now(timezone.utc),
+            generation_metadata=generation_metadata,
+        )
+        session.add(draft)
+        drafts.append(draft)
 
-            # 3g: Create ContentDraft
-            draft = ContentDraft(
-                topic_id=topic.id,
-                platform=platform,
-                content=content,
-                status=DraftStatus.DRAFT,
-                model_used=f"{provider}/{model}",
-                token_cost=_estimate_token_cost(total_tokens, provider),
-                generated_at=datetime.now(timezone.utc),
-                generation_metadata=generation_metadata,
-            )
-            session.add(draft)
-            drafts.append(draft)
+        logger.info(
+            "Generated substack draft for topic=%s (tokens=%d)",
+            topic.id, total_tokens,
+        )
 
-            logger.info(
-                "Generated %s draft for topic=%s (tokens=%d)",
-                platform_key, topic.id, total_tokens,
-            )
-
-        except (LLMGenerationError, Exception) as exc:  # noqa: BLE001
-            logger.error(
-                "Failed to generate %s draft for topic=%s: %s",
-                platform_key, topic.id, exc,
-            )
-            alert = SystemAlert(
-                source=f"generation/{platform_key}",
-                alert_type="generation_failure",
-                consecutive_failures=1,
-                last_failure_at=datetime.now(timezone.utc),
-            )
-            session.add(alert)
+    except (LLMGenerationError, Exception) as exc:  # noqa: BLE001
+        logger.error(
+            "Failed to generate substack draft for topic=%s: %s",
+            topic.id, exc,
+        )
+        alert = SystemAlert(
+            source="generation/substack",
+            alert_type="generation_failure",
+            consecutive_failures=1,
+            last_failure_at=datetime.now(timezone.utc),
+        )
+        session.add(alert)
 
     # Step 4: Update topic status to GENERATED
     topic.status = TopicStatus.GENERATED
 
     logger.info(
-        "Generation complete for topic=%s: %d/%d platforms succeeded",
-        topic.id, len(drafts), len(_PLATFORM_BUILDERS),
+        "Generation complete for topic=%s: substack %s",
+        topic.id, "succeeded" if drafts else "failed",
     )
 
     return drafts
+
+
+async def generate_social_for_topic(
+    topic: Topic,
+    platform: Platform,
+    substack_content: str,
+    session: AsyncSession,
+    llm_client: LLMClient,
+) -> ContentDraft:
+    """Generate a single social platform draft using the Substack article as context (Phase 2).
+
+    Called on-demand when Justin clicks a "Generate [Platform]" button on the
+    review dashboard. Uses Claude Haiku 4.5 and injects the full Substack
+    article so the social content is derived from the long-form piece.
+
+    Args:
+        topic: Topic instance with nested scored_signal -> signal.
+        platform: Target social platform (TWITTER, LINKEDIN, or INSTAGRAM).
+        substack_content: The full generated Substack article text.
+        session: Async database session for persisting the draft.
+        llm_client: Configured LLMClient for generation calls.
+
+    Returns:
+        The created ContentDraft instance.
+
+    Raises:
+        ValueError: If the platform is SUBSTACK (use generate_for_topic instead).
+        LLMGenerationError: If the LLM call fails after retries.
+    """
+    if platform == Platform.SUBSTACK:
+        raise ValueError("Use generate_for_topic() for Substack generation.")
+
+    if platform not in _SOCIAL_PLATFORM_BUILDERS:
+        raise ValueError(f"Unknown social platform: {platform}")
+
+    signal = topic.scored_signal.signal
+    title = signal.title
+    body = signal.body_preview or ""
+    score_breakdown = topic.scored_signal.score_breakdown
+    thesis = topic.thesis
+    vertical = topic.vertical or detect_vertical(title, body)
+
+    build_prompt = _SOCIAL_PLATFORM_BUILDERS[platform]
+    platform_key = platform.value
+
+    # Get model config (Haiku 4.5 for all social platforms)
+    config = get_model_config(platform_key)
+    provider = config["provider"]
+    model = config["model"]
+
+    # Select exemplars
+    exemplars = await select_exemplars(session, platform_key, vertical)
+    exemplar_texts = [e.content for e in exemplars]
+
+    # Build system prompt
+    system_prompt = build_system_prompt()
+
+    # Build platform-specific prompt with Substack content as context
+    user_prompt = build_prompt(
+        topic_title=title,
+        topic_body=body,
+        score_breakdown=score_breakdown,
+        thesis=thesis,
+        exemplars=exemplar_texts,
+        substack_content=substack_content,
+    )
+
+    # Call LLM
+    response = await llm_client.generate(
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
+        provider=provider,
+        model=model,
+    )
+
+    # Build generation metadata
+    generation_metadata: dict = {
+        "prompt_version": _prompt_version_hash(user_prompt),
+        "derived_from_substack": True,
+    }
+    if not topic.thesis_provided:
+        generation_metadata["ai_originated"] = True
+    if not exemplars:
+        generation_metadata["no_exemplars_available"] = True
+
+    # Create ContentDraft
+    draft = ContentDraft(
+        topic_id=topic.id,
+        platform=platform,
+        content=response.content,
+        status=DraftStatus.DRAFT,
+        model_used=f"{provider}/{model}",
+        token_cost=_estimate_token_cost(response.total_tokens, provider),
+        generated_at=datetime.now(timezone.utc),
+        generation_metadata=generation_metadata,
+    )
+    session.add(draft)
+
+    logger.info(
+        "Generated %s draft for topic=%s (tokens=%d, derived from substack)",
+        platform_key, topic.id, response.total_tokens,
+    )
+
+    return draft

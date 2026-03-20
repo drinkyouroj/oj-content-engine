@@ -71,6 +71,50 @@ export async function triggerRegeneration(
 }
 
 /**
+ * Triggers on-demand social content generation for a single platform.
+ *
+ * POSTs to the Worker's /api/generate-social/:topicId/:platform endpoint,
+ * which fetches the existing Substack draft for the topic and calls Claude
+ * Haiku 4.5 to generate platform-specific content derived from the article.
+ * The call blocks until generation completes (estimated 5-15s).
+ *
+ * @param topicId UUID of the topic
+ * @param platform Target social platform: "twitter", "linkedin", or "instagram"
+ * @returns Object containing the created draft ID and platform
+ * @throws WorkerClientError if WORKER_URL or WORKER_SECRET are not configured
+ * @throws WorkerClientError if the Worker API returns a non-2xx response
+ */
+export async function triggerSocialGeneration(
+  topicId: string,
+  platform: "twitter" | "linkedin" | "instagram"
+): Promise<{ draft_id: string; platform: string }> {
+  const workerUrl = process.env.WORKER_URL;
+  const workerSecret = process.env.WORKER_SECRET;
+
+  if (!workerUrl || !workerSecret) {
+    throw new WorkerClientError("WORKER_URL or WORKER_SECRET not configured");
+  }
+
+  const response = await fetch(
+    `${workerUrl}/api/generate-social/${topicId}/${platform}`,
+    {
+      method: "POST",
+      headers: {
+        "x-worker-secret": workerSecret,
+        "Content-Type": "application/json",
+      },
+    }
+  );
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new WorkerClientError(`Worker API error: ${text}`, response.status);
+  }
+
+  return response.json() as Promise<{ draft_id: string; platform: string }>;
+}
+
+/**
  * Requests thesis suggestions from the Worker for a given topic.
  *
  * POSTs to the Worker's /api/suggest-theses/:topicId endpoint, which fetches
