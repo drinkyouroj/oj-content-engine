@@ -94,20 +94,19 @@ class NotionClient:
     async def setup_database(self) -> None:
         """Ensure the target database has all required properties.
 
-        Creates any missing properties on the Notion database via the
-        databases.update API. Safe to call multiple times — Notion ignores
-        properties that already exist.
+        Uses the Notion REST API directly (with explicit API version header)
+        because the notion-client SDK may use a different API version that
+        doesn't return properties. Safe to call multiple times — Notion
+        ignores properties that already exist.
 
         Should be called once before the first staging run.
         """
+        import httpx
+
         properties = {
             "Platform": {"select": {"options": [
                 {"name": "Substack"}, {"name": "Twitter"},
                 {"name": "Linkedin"}, {"name": "Instagram"},
-            ]}},
-            "Status": {"select": {"options": [
-                {"name": "Draft"}, {"name": "Review"},
-                {"name": "Approved"}, {"name": "Published"}, {"name": "Killed"},
             ]}},
             "Composite Score": {"number": {}},
             "Score Breakdown": {"rich_text": {}},
@@ -116,14 +115,22 @@ class NotionClient:
             "Thesis Provided": {"checkbox": {}},
             "Model Used": {"rich_text": {}},
             "Token Cost": {"number": {}},
+            # Note: "Status" is NOT created here — it already exists as a
+            # native Notion status property on the database. We use it as-is.
         }
 
         try:
-            await asyncio.to_thread(
-                self._client.databases.update,
-                database_id=self._database_id,
-                properties=properties,
-            )
+            async with httpx.AsyncClient() as http:
+                resp = await http.patch(
+                    f"https://api.notion.com/v1/databases/{self._database_id}",
+                    headers={
+                        "Authorization": f"Bearer {self._client.options.auth}",
+                        "Notion-Version": "2022-06-28",
+                        "Content-Type": "application/json",
+                    },
+                    json={"properties": properties},
+                )
+                resp.raise_for_status()
             logger.info("Database properties ensured for %s", self._database_id)
         except Exception as exc:
             logger.error("Failed to update database properties: %s", exc)
@@ -184,7 +191,7 @@ class NotionClient:
         notion_properties = {
             "Title": {"title": [{"text": {"content": title}}]},
             "Platform": {"select": {"name": platform.capitalize()}},
-            "Status": {"select": {"name": "Draft"}},
+            "Status": {"status": {"name": "Draft"}},
             "Composite Score": {"number": composite_score},
             "Score Breakdown": {
                 "rich_text": [{"text": {"content": score_breakdown}}]
