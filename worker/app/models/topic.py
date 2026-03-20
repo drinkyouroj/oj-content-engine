@@ -63,6 +63,7 @@ class Topic(UUIDPrimaryKey, TimestampMixin, Base):
     )
     reviewed_by: Mapped[str | None] = mapped_column(Text, nullable=True)
     review_decision: Mapped[str | None] = mapped_column(Text, nullable=True)
+    vertical: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Relationships
     scored_signal: Mapped["ScoredSignal"] = relationship(back_populates="topics")

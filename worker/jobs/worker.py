@@ -29,6 +29,8 @@ def _build_redis_settings() -> RedisSettings:
     return RedisSettings.from_dsn(get_settings().arq_redis_url)
 
 
+from worker.jobs.generation_jobs import run_generation_job
+from worker.jobs.notion_jobs import run_notion_staging_job
 from worker.jobs.scoring_jobs import run_scoring_pipeline
 from worker.jobs.triage_jobs import run_triage_job
 
@@ -63,7 +65,7 @@ class WorkerSettings:
 
     redis_settings = _build_redis_settings()
 
-    functions = [ping, poll_rss, poll_reddit, poll_hn, poll_twitter, run_scoring_pipeline, run_triage_job]
+    functions = [ping, poll_rss, poll_reddit, poll_hn, poll_twitter, run_scoring_pipeline, run_triage_job, run_generation_job, run_notion_staging_job]
 
     cron_jobs = [
         cron(poll_rss, hour={0, 4, 8, 12, 16, 20}, minute=0),

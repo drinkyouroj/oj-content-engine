@@ -15,6 +15,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import DateTime, Enum, ForeignKey, Numeric, Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from worker.app.models.base import Base, TimestampMixin, UUIDPrimaryKey
@@ -76,6 +77,7 @@ class ContentDraft(UUIDPrimaryKey, TimestampMixin, Base):
     generated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    generation_metadata: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}", nullable=False)
 
     # Relationships
     topic: Mapped["Topic"] = relationship(back_populates="content_drafts")
