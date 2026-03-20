@@ -24,10 +24,17 @@ target_metadata = Base.metadata
 
 
 def _get_url() -> str:
-    """Get the database URL from app config, rewritten for asyncpg."""
+    """Get the database URL from app config, rewritten for asyncpg.
+
+    Strips query params (sslmode, channel_binding) that asyncpg doesn't
+    accept as URL params — SSL is configured via connect_args instead.
+    """
     url = get_settings().database_url
     if url.startswith("postgresql://"):
         url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    # Strip query string — asyncpg chokes on sslmode, channel_binding, etc.
+    if "?" in url:
+        url = url.split("?")[0]
     return url
 
 
@@ -52,7 +59,10 @@ def do_run_migrations(connection) -> None:
 
 async def run_async_migrations() -> None:
     """Create an async engine and run migrations."""
-    engine = create_async_engine(_get_url())
+    import ssl as _ssl
+
+    ssl_ctx = _ssl.create_default_context()
+    engine = create_async_engine(_get_url(), connect_args={"ssl": ssl_ctx})
     async with engine.connect() as connection:
         await connection.run_sync(do_run_migrations)
     await engine.dispose()
