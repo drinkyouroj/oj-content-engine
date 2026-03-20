@@ -1,46 +1,29 @@
 /**
- * components/recent-drafts.tsx — Panel showing the 10 most recent content drafts.
+ * components/recent-drafts.tsx — Recent drafts grouped by topic.
  *
- * Implements PRD Section 5 (Approval UI). Displays draft metadata — platform,
- * topic title, status, and a link to the Notion staging page — without loading
- * full draft body content (fetched lazily on the review page).
- *
- * Inputs:  Array of DraftRow objects from getRecentDrafts()
- * Outputs: shadcn Table with platform emoji, status badge, and Notion link.
+ * Displays generated content grouped by topic, with platform tabs inside
+ * each group linking to the Notion staging page.
  */
 
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import Link from "next/link";
 
 export interface DraftRow {
   id: string;
+  topic_id: string;
   platform: string;
   status: string;
   notion_page_id: string | null;
   topic_title: string;
 }
 
-/** Maps platform slug to a display emoji. */
-const PLATFORM_EMOJI: Record<string, string> = {
-  substack: "📝",
-  twitter: "🐦",
-  linkedin: "💼",
-  instagram: "📷",
+const PLATFORM_META: Record<string, { emoji: string; label: string }> = {
+  substack: { emoji: "📝", label: "Substack" },
+  twitter: { emoji: "🐦", label: "Twitter" },
+  linkedin: { emoji: "💼", label: "LinkedIn" },
+  instagram: { emoji: "📷", label: "Instagram" },
 };
 
-/**
- * Returns className overrides for a status Badge to match brand colours.
- *
- * @param status Draft status string from the DB enum
- * @returns className string for the Badge component
- */
 function statusBadgeClass(status: string): string {
   switch (status) {
     case "draft":
@@ -54,16 +37,37 @@ function statusBadgeClass(status: string): string {
   }
 }
 
+interface TopicGroup {
+  topicId: string;
+  topicTitle: string;
+  status: string;
+  drafts: DraftRow[];
+}
+
+function groupByTopic(drafts: DraftRow[]): TopicGroup[] {
+  const groups = new Map<string, TopicGroup>();
+
+  for (const draft of drafts) {
+    let group = groups.get(draft.topic_id);
+    if (!group) {
+      group = {
+        topicId: draft.topic_id,
+        topicTitle: draft.topic_title,
+        status: draft.status,
+        drafts: [],
+      };
+      groups.set(draft.topic_id, group);
+    }
+    group.drafts.push(draft);
+  }
+
+  return Array.from(groups.values());
+}
+
 interface RecentDraftsProps {
   drafts: DraftRow[];
 }
 
-/**
- * Table of the 10 most recently created content drafts.
- * Renders an empty state message when no drafts exist yet.
- *
- * @param drafts Array of draft rows from getRecentDrafts()
- */
 export function RecentDrafts({ drafts }: RecentDraftsProps) {
   if (drafts.length === 0) {
     return (
@@ -73,63 +77,65 @@ export function RecentDrafts({ drafts }: RecentDraftsProps) {
     );
   }
 
+  const groups = groupByTopic(drafts);
+
   return (
-    <div className="rounded-xl bg-zinc-900 border border-zinc-800 overflow-hidden">
-      <Table>
-        <TableHeader>
-          <TableRow className="border-zinc-800 hover:bg-transparent">
-            <TableHead className="text-zinc-400 font-medium w-28">Platform</TableHead>
-            <TableHead className="text-zinc-400 font-medium">Topic</TableHead>
-            <TableHead className="text-zinc-400 font-medium w-28">Status</TableHead>
-            <TableHead className="text-zinc-400 font-medium w-24">Notion</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {drafts.map((draft) => {
-            const emoji = PLATFORM_EMOJI[draft.platform] ?? "📄";
-            return (
-              <TableRow
-                key={draft.id}
-                className="border-zinc-800 hover:bg-zinc-800/50"
-              >
-                <TableCell>
-                  <span className="text-sm text-zinc-300">
-                    {emoji}{" "}
-                    <span className="capitalize">{draft.platform}</span>
-                  </span>
-                </TableCell>
-                <TableCell className="max-w-xs">
-                  <span className="truncate block text-zinc-300 text-sm">
-                    {draft.topic_title}
-                  </span>
-                </TableCell>
-                <TableCell>
-                  <Badge
-                    variant="outline"
-                    className={statusBadgeClass(draft.status)}
+    <div className="space-y-4">
+      {groups.map((group) => (
+        <div
+          key={group.topicId}
+          className="rounded-xl bg-zinc-900 border border-zinc-800 overflow-hidden"
+        >
+          {/* Topic header */}
+          <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
+            <Link
+              href={`/dashboard/review/${group.topicId}`}
+              className="text-sm font-medium text-zinc-200 hover:text-[#00B4D8] transition-colors truncate max-w-md"
+            >
+              {group.topicTitle}
+            </Link>
+            <Badge
+              variant="outline"
+              className={statusBadgeClass(group.status)}
+            >
+              {group.status}
+            </Badge>
+          </div>
+
+          {/* Platform links row */}
+          <div className="flex items-center gap-1 px-4 py-2">
+            {group.drafts.map((draft) => {
+              const meta = PLATFORM_META[draft.platform] ?? {
+                emoji: "📄",
+                label: draft.platform,
+              };
+
+              if (draft.notion_page_id) {
+                return (
+                  <a
+                    key={draft.id}
+                    href={`https://notion.so/${draft.notion_page_id.replace(/-/g, "")}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-[#00B4D8] transition-colors"
                   >
-                    {draft.status}
-                  </Badge>
-                </TableCell>
-                <TableCell>
-                  {draft.notion_page_id ? (
-                    <a
-                      href={`https://notion.so/${draft.notion_page_id.replace(/-/g, "")}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-[#00B4D8] hover:underline"
-                    >
-                      Open ↗
-                    </a>
-                  ) : (
-                    <span className="text-zinc-600 text-xs">—</span>
-                  )}
-                </TableCell>
-              </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
+                    {meta.emoji} {meta.label} ↗
+                  </a>
+                );
+              }
+
+              return (
+                <span
+                  key={draft.id}
+                  className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium bg-zinc-800/50 text-zinc-500"
+                >
+                  {meta.emoji} {meta.label}
+                </span>
+              );
+            })}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
