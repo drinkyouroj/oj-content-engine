@@ -40,11 +40,11 @@ interface SearchResponse {
   warnings: string[];
 }
 
-/** Response shape from POST /api/create-topics. */
+/** Response shape from POST /api/create-topic (singular — synthesizes one topic from multiple articles). */
 interface CreateResponse {
-  created: number;
-  skipped: number;
-  topic_ids: string[];
+  topic_id: string;
+  title: string;
+  source_count: number;
 }
 
 /**
@@ -83,7 +83,7 @@ export function ResearchResults() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState<boolean>(false);
   const [creating, setCreating] = useState<boolean>(false);
-  const [success, setSuccess] = useState<{ created: number; skipped: number } | null>(null);
+  const [success, setSuccess] = useState<{ topic_id: string; title: string; source_count: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   /**
@@ -141,8 +141,8 @@ export function ResearchResults() {
   }
 
   /**
-   * Creates topics from selected articles via POST /api/create-topics.
-   * Sends the full article objects for each selected URL.
+   * Creates one synthesized topic from all selected articles via POST /api/create-topic.
+   * Multiple articles are combined into a single topic with source URLs preserved.
    */
   async function handleCreate() {
     const articles = results.filter((r) => selected.has(r.url));
@@ -152,7 +152,7 @@ export function ResearchResults() {
     setError(null);
 
     try {
-      const res = await fetch("/api/create-topics", {
+      const res = await fetch("/api/create-topic", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ articles }),
@@ -165,7 +165,7 @@ export function ResearchResults() {
       }
 
       const data = (await res.json()) as CreateResponse;
-      setSuccess({ created: data.created, skipped: data.skipped });
+      setSuccess(data);
       setResults([]);
       setSelected(new Set());
     } catch (err) {
@@ -255,8 +255,14 @@ export function ResearchResults() {
       {success && (
         <div className="rounded-lg border border-[#00B4D8]/30 bg-[#00B4D8]/10 px-4 py-3">
           <p className="text-sm text-[#00B4D8]">
-            Created {success.created} topic{success.created !== 1 ? "s" : ""}
-            {success.skipped > 0 && ` (${success.skipped} skipped as duplicates)`}.{" "}
+            Created topic from {success.source_count} source{success.source_count !== 1 ? "s" : ""}: &ldquo;{success.title}&rdquo;.{" "}
+            <Link
+              href={`/dashboard/review/${success.topic_id}`}
+              className="underline underline-offset-2 hover:text-[#00B4D8]/80"
+            >
+              Review topic
+            </Link>
+            {" | "}
             <Link
               href="/dashboard"
               className="underline underline-offset-2 hover:text-[#00B4D8]/80"
@@ -365,7 +371,7 @@ export function ResearchResults() {
                   Creating...
                 </span>
               ) : (
-                `Create ${selected.size} Topic${selected.size !== 1 ? "s" : ""}`
+                `Create Topic (${selected.size} source${selected.size !== 1 ? "s" : ""})`
               )}
             </Button>
           </div>
