@@ -50,7 +50,7 @@ logger = logging.getLogger(__name__)
 _GROQ_PROVIDER = "groq"
 _GROQ_MODEL = "llama-3.3-70b-versatile"
 _ANTHROPIC_PROVIDER = "anthropic"
-_ANTHROPIC_MODEL = "claude-sonnet-4-5"
+_ANTHROPIC_MODEL = "claude-sonnet-4-6"
 
 # Output root relative to repo root
 _OUTPUT_ROOT = Path(__file__).parent.parent.parent / "output" / "comparisons"

@@ -29,8 +29,8 @@ from worker.generation.llm_client import (
 def test_get_model_config_returns_default():
     """Returns the built-in config for a known platform."""
     cfg = get_model_config("substack")
-    assert cfg["provider"] == "groq"
-    assert cfg["model"] == "llama-3.3-70b-versatile"
+    assert cfg["provider"] == "anthropic"
+    assert cfg["model"] == "claude-sonnet-4-6"
 
 
 def test_get_model_config_env_override(monkeypatch):
