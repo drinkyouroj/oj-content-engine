@@ -41,6 +41,7 @@ const SCORING_DIMENSIONS = [
 interface TopicActionsProps {
   topicId: string;
   topicStatus: string;
+  hasDrafts: boolean;
 }
 
 /**
@@ -62,7 +63,7 @@ function Spinner() {
  * @param topicId     UUID of the topic being reviewed
  * @param topicStatus Current status string (used to conditionally disable actions)
  */
-export function TopicActions({ topicId, topicStatus }: TopicActionsProps) {
+export function TopicActions({ topicId, topicStatus, hasDrafts }: TopicActionsProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
@@ -221,10 +222,11 @@ export function TopicActions({ topicId, topicStatus }: TopicActionsProps) {
       )}
 
       <div className="flex flex-wrap items-center gap-3">
-        {/* Approve */}
+        {/* Approve — disabled when no drafts exist */}
         <Button
           onClick={handleApprove}
-          disabled={isDisabled}
+          disabled={isDisabled || !hasDrafts}
+          title={!hasDrafts ? "Generate drafts first before approving" : undefined}
           className="bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
         >
           {activeAction === "approve" ? (
@@ -242,7 +244,8 @@ export function TopicActions({ topicId, topicStatus }: TopicActionsProps) {
           <DialogTrigger
             render={
               <Button
-                disabled={isDisabled}
+                disabled={isDisabled || !hasDrafts}
+                title={!hasDrafts ? "Generate drafts first before rejecting" : undefined}
                 className="bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
               />
             }
