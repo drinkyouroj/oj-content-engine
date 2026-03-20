@@ -48,8 +48,11 @@ class Topic(UUIDPrimaryKey, TimestampMixin, Base):
 
     __tablename__ = "topics"
 
-    scored_signal_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("scored_signals.id", ondelete="CASCADE"), nullable=False
+    scored_signal_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("scored_signals.id", ondelete="CASCADE"), nullable=True
+    )
+    signal_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("signals.id", ondelete="CASCADE"), nullable=True
     )
     status: Mapped[TopicStatus] = mapped_column(
         Enum(TopicStatus, name="topic_status", native_enum=True, values_callable=lambda e: [m.value for m in e]), nullable=False
@@ -66,7 +69,8 @@ class Topic(UUIDPrimaryKey, TimestampMixin, Base):
     vertical: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Relationships
-    scored_signal: Mapped["ScoredSignal"] = relationship(back_populates="topics")
+    scored_signal: Mapped["ScoredSignal | None"] = relationship(back_populates="topics")
+    signal: Mapped["Signal | None"] = relationship()
     content_drafts: Mapped[list["ContentDraft"]] = relationship(
         back_populates="topic", cascade="all, delete-orphan"
     )
