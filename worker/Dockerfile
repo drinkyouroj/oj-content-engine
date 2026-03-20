@@ -3,6 +3,11 @@ FROM python:3.12-slim AS builder
 
 WORKDIR /build
 
+# Install build tools needed for C extensions (asyncpg, uvloop)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc python3-dev libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
 # Copy source first so pip install can find the package
 COPY pyproject.toml .
 COPY app/ app/
@@ -14,6 +19,11 @@ RUN pip install --no-cache-dir .
 FROM python:3.12-slim
 
 WORKDIR /app
+
+# libpq is needed at runtime by asyncpg
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq5 \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy installed packages (site-packages) from builder
 COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
