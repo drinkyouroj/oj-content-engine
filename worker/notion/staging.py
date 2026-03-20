@@ -118,16 +118,21 @@ async def stage_drafts(
                 },
             )
 
-            # Attach generation metadata as a comment so it's visible in Notion
-            # without cluttering the page body.
-            metadata = {
-                "model": draft.model_used,
-                "generated_at": (
-                    draft.generated_at.isoformat() if draft.generated_at else None
-                ),
-                "generation_metadata": draft.generation_metadata,
-            }
-            await client.add_comment(page_id, json.dumps(metadata, indent=2))
+            # Attach generation metadata as a comment (non-fatal if permissions missing)
+            try:
+                metadata = {
+                    "model": draft.model_used,
+                    "generated_at": (
+                        draft.generated_at.isoformat() if draft.generated_at else None
+                    ),
+                    "generation_metadata": draft.generation_metadata,
+                }
+                await client.add_comment(page_id, json.dumps(metadata, indent=2))
+            except NotionWriteError:
+                logger.warning(
+                    "Could not add comment to page %s (check integration permissions)",
+                    page_id,
+                )
 
             # Bidirectional link: store Notion page ID on the draft row so the
             # approval UI can deep-link directly to the Notion page.
