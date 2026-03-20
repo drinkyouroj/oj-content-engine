@@ -46,7 +46,12 @@ class Signal(UUIDPrimaryKey, TimestampMixin, Base):
     __tablename__ = "signals"
 
     source: Mapped[SignalSource] = mapped_column(
-        Enum(SignalSource, name="signal_source", native_enum=True),
+        Enum(
+            SignalSource,
+            name="signal_source",
+            native_enum=True,
+            values_callable=lambda e: [m.value for m in e],
+        ),
         nullable=False,
     )
     url: Mapped[str] = mapped_column(Text, nullable=False)

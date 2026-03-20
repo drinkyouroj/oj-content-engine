@@ -60,11 +60,11 @@ class ContentDraft(UUIDPrimaryKey, TimestampMixin, Base):
         ForeignKey("topics.id", ondelete="CASCADE"), nullable=False
     )
     platform: Mapped[Platform] = mapped_column(
-        Enum(Platform, name="platform", native_enum=True), nullable=False
+        Enum(Platform, name="platform", native_enum=True, values_callable=lambda e: [m.value for m in e]), nullable=False
     )
     content: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[DraftStatus] = mapped_column(
-        Enum(DraftStatus, name="draft_status", native_enum=True),
+        Enum(DraftStatus, name="draft_status", native_enum=True, values_callable=lambda e: [m.value for m in e]),
         nullable=False,
         default=DraftStatus.DRAFT,
         server_default="draft",
