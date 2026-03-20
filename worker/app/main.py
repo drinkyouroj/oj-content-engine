@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 _engine = None
 _session_factory = None
 _redis_settings = None
+_settings = None
 
 
 @asynccontextmanager
@@ -36,12 +37,12 @@ async def lifespan(app: FastAPI):
 
     Creates connections on startup, closes them on shutdown.
     """
-    global _engine, _session_factory, _redis_settings
+    global _engine, _session_factory, _redis_settings, _settings
 
-    settings = get_settings()
-    _engine = make_engine(settings.database_url)
+    _settings = get_settings()
+    _engine = make_engine(_settings.database_url)
     _session_factory = make_session_factory(_engine)
-    _redis_settings = RedisSettings.from_dsn(settings.arq_redis_url)
+    _redis_settings = RedisSettings.from_dsn(_settings.arq_redis_url)
 
     logger.info("Worker started — database and Redis connections ready")
     yield
@@ -50,6 +51,7 @@ async def lifespan(app: FastAPI):
     _engine = None
     _session_factory = None
     _redis_settings = None
+    _settings = None
     logger.info("Worker stopped — connections closed")
 
 
@@ -126,8 +128,7 @@ async def regenerate_topic(
         HTTPException 401: If the secret is missing or incorrect.
         HTTPException 503: If the session factory is not yet initialised.
     """
-    settings = get_settings()
-    if not x_worker_secret or x_worker_secret != settings.worker_secret:
+    if not x_worker_secret or not _settings or x_worker_secret != _settings.worker_secret:
         raise HTTPException(status_code=401, detail="Invalid worker secret")
 
     if _session_factory is None:
