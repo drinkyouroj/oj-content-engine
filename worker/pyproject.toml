@@ -37,7 +37,7 @@ find = { where = [".."], include = ["worker", "worker.*"] }
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-testpaths = ["app", "jobs", "discovery", "scoring"]
+testpaths = ["app", "jobs", "discovery", "scoring", "triage"]
 
 [tool.ruff]
 target-version = "py312"
