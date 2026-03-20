@@ -130,8 +130,8 @@ def test_timing_over_7_days():
 
 
 def test_resonance_core_keyword():
-    """Core keyword 'depin' in title scores 100."""
-    signal = _make_signal(title="DePIN Revolution in Wireless Networks")
+    """Core keyword 'ai regulation' in title scores 100."""
+    signal = _make_signal(title="New AI Regulation Framework Proposed by EU")
     assert score_community_resonance(signal) == 100
 
 
@@ -139,20 +139,20 @@ def test_resonance_core_keyword_in_body():
     """Core keyword in body_preview also matches."""
     signal = _make_signal(
         title="Something unrelated",
-        body_preview="This article covers decentralized infrastructure projects",
+        body_preview="This article covers artificial intelligence safety concerns",
     )
     assert score_community_resonance(signal) == 100
 
 
 def test_resonance_direct_keyword():
-    """Direct keyword 'helium' scores 60."""
-    signal = _make_signal(title="Helium Network Reaches 1M Hotspots")
+    """Direct keyword 'openai' scores 60."""
+    signal = _make_signal(title="OpenAI Releases New Model Architecture")
     assert score_community_resonance(signal) == 60
 
 
 def test_resonance_adjacent_keyword():
-    """Adjacent keyword 'ai tooling' scores 30."""
-    signal = _make_signal(title="New AI Tooling for Developers")
+    """Adjacent keyword 'cloud computing' scores 30."""
+    signal = _make_signal(title="Cloud Computing Trends for 2026")
     assert score_community_resonance(signal) == 30
 
 
@@ -164,17 +164,17 @@ def test_resonance_no_match():
 
 def test_resonance_case_insensitive():
     """Keyword matching is case-insensitive."""
-    signal = _make_signal(title="DEPIN IS THE FUTURE")
+    signal = _make_signal(title="AI SAFETY IS CRITICAL")
     assert score_community_resonance(signal) == 100
 
 
 def test_resonance_highest_tier_wins():
     """If multiple tiers match, highest tier score wins."""
     signal = _make_signal(
-        title="DePIN Project Helium Expands",
-        body_preview="A web3 infrastructure initiative",
+        title="AI Governance and OpenAI's Role",
+        body_preview="A cloud computing infrastructure initiative",
     )
-    # core (depin) = 100 should win over direct (helium) = 60
+    # core (ai governance) = 100 should win over direct (openai) = 60
     assert score_community_resonance(signal) == 100
 
 
@@ -186,7 +186,7 @@ def test_resonance_highest_tier_wins():
 @pytest.mark.asyncio
 async def test_compute_pass1_returns_all_keys():
     """compute_pass1_scores returns all 3 Pass 1 dimension keys."""
-    signal = _make_signal(title="DePIN test signal")
+    signal = _make_signal(title="AI regulation test signal")
     session = _mock_session_with_sources([])
     result = await compute_pass1_scores(signal, session)
     assert set(result.keys()) == {"signal_strength", "timing_window", "community_resonance"}
