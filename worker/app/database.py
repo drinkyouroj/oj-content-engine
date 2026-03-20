@@ -34,7 +34,13 @@ def make_engine(database_url: str):
         url = url.split("?")[0]
     ssl_ctx = _ssl.create_default_context()
     return create_async_engine(
-        url, pool_size=5, max_overflow=15, echo=False, connect_args={"ssl": ssl_ctx}
+        url,
+        pool_size=5,
+        max_overflow=15,
+        echo=False,
+        pool_pre_ping=True,  # Test connections before use (Neon closes idle connections)
+        pool_recycle=300,     # Recycle connections after 5 minutes
+        connect_args={"ssl": ssl_ctx},
     )
 
 
