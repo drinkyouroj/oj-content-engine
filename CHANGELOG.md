@@ -13,3 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Decision 001: Vercel + Worker two-host split
 - Decision 002: Upstash Redis over self-hosted Redis
 - Environment variable template (.env.example)
+- Worker layer scaffold: FastAPI + ARQ + Docker (Railway)
+- Postgres schema: 7 tables (signals, scored_signals, topics, content_drafts, voice_exemplars, scoring_adjustments, system_alerts)
+- Alembic async migration framework with initial migration
+- Health endpoint (/health) with DB and Redis connectivity checks
+- Decision docs: 003 (SQLAlchemy ORM), 004 (no local dev containers)
