@@ -1,17 +1,22 @@
 # Stage 1: Builder — install Python dependencies
 FROM python:3.12-slim AS builder
 
-WORKDIR /build
+# pyproject.toml expects to find packages at ../worker/* relative to itself.
+# We replicate that layout: /build/worker/ contains source, pyproject.toml
+# is at /build/worker/pyproject.toml, and we pip install from /build.
+WORKDIR /build/worker
 
 # Install build tools needed for C extensions (asyncpg, uvloop)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc python3-dev libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy all source so pip install can find all worker.* packages
+# Copy all worker source into /build/worker/
 COPY . .
 
-RUN pip install --no-cache-dir .
+# Install from the parent so setuptools finds worker.* at /build/worker/
+WORKDIR /build
+RUN pip install --no-cache-dir ./worker
 
 # Stage 2: Runtime — slim image with only what's needed
 FROM python:3.12-slim
