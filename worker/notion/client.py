@@ -62,30 +62,83 @@ def _content_to_blocks(content: str) -> list[dict]:
     if not content:
         return [_paragraph_block("")]
 
+    # Pre-process: split on newlines and re-group logically.
+    # The LLM mixes \n and \n\n inconsistently, so we process line by line
+    # and merge related lines (e.g. image marker groups).
+    lines = content.split("\n")
     blocks: list[dict] = []
-    paragraphs = content.split("\n\n")
+    current_paragraph: list[str] = []
+    image_group: list[str] = []
 
-    for para in paragraphs:
-        para = para.strip()
-        if not para:
+    def flush_paragraph() -> None:
+        text = " ".join(current_paragraph).strip()
+        if text:
+            for chunk in _split_text(text, _BLOCK_CHAR_LIMIT):
+                blocks.append(_paragraph_block(chunk))
+        current_paragraph.clear()
+
+    def flush_image_group() -> None:
+        if image_group:
+            blocks.append(_callout_block("\n".join(image_group)))
+            image_group.clear()
+
+    for line in lines:
+        stripped = line.strip()
+
+        # Skip empty lines (paragraph boundaries)
+        if not stripped:
+            flush_paragraph()
+            flush_image_group()
             continue
 
+        # Horizontal rules
+        if stripped == "---":
+            flush_paragraph()
+            flush_image_group()
+            blocks.append(_paragraph_block("───"))
+            continue
+
+        # Image markers — group [IMAGE:], [ALT:], [CAPTION:] together
+        if stripped.startswith(("[IMAGE:", "[ALT:", "[CAPTION:")):
+            flush_paragraph()
+            image_group.append(stripped)
+            continue
+
+        # If we were collecting an image group but hit a non-marker line,
+        # the image description may have wrapped. Check if it looks like
+        # continuation text (no bracket prefix, image_group is open).
+        if image_group and not stripped.startswith(("[", "#", "TITLE:", "SUBTITLE:", "TEMPLATE:", "SOURCES:")):
+            # Continuation of the previous image marker line
+            image_group[-1] += " " + stripped
+            continue
+
+        # Flush any pending image group before processing other block types
+        flush_image_group()
+
         # Headings
-        if para.startswith("### "):
-            blocks.append(_heading_block(para[4:], level=3))
-        elif para.startswith("## "):
-            blocks.append(_heading_block(para[3:], level=2))
-        elif para.startswith("# "):
-            blocks.append(_heading_block(para[2:], level=1))
-        elif para.upper().startswith(("TITLE:", "SUBTITLE:", "TEMPLATE:", "SOURCES:")):
-            blocks.append(_heading_block(para, level=2))
-        # Image markers → callout block
-        elif para.startswith("[IMAGE:") or para.startswith("[ALT:") or para.startswith("[CAPTION:"):
-            blocks.append(_callout_block(para))
-        # Regular paragraph — split if too long
+        if stripped.startswith("### "):
+            flush_paragraph()
+            blocks.append(_heading_block(stripped[4:], level=3))
+        elif stripped.startswith("## "):
+            flush_paragraph()
+            blocks.append(_heading_block(stripped[3:], level=2))
+        elif stripped.startswith("# "):
+            flush_paragraph()
+            blocks.append(_heading_block(stripped[2:], level=1))
+        elif stripped.upper().startswith(("TITLE:", "SUBTITLE:", "TEMPLATE:", "SOURCES:")):
+            flush_paragraph()
+            blocks.append(_heading_block(stripped, level=2))
+        # Footnote lines like [1] Description — URL
+        elif stripped.startswith("[") and stripped[1:3].replace("]", "").isdigit():
+            flush_paragraph()
+            blocks.append(_paragraph_block(stripped))
+        # Regular text — accumulate into current paragraph
         else:
-            for chunk in _split_text(para, _BLOCK_CHAR_LIMIT):
-                blocks.append(_paragraph_block(chunk))
+            current_paragraph.append(stripped)
+
+    # Flush any remaining content
+    flush_paragraph()
+    flush_image_group()
 
     return blocks if blocks else [_paragraph_block("")]
 
