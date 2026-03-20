@@ -25,7 +25,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from worker.app.models.content_draft import ContentDraft
+from worker.app.models.scored_signal import ScoredSignal
 from worker.app.models.system_alert import SystemAlert
+from worker.app.models.topic import Topic
 from worker.notion.client import NotionClient, NotionWriteError
 
 logger = logging.getLogger(__name__)
@@ -66,7 +68,9 @@ async def stage_drafts(
             ContentDraft.notion_page_id == None,  # noqa: E711
         )
         .options(
-            selectinload(ContentDraft.topic),
+            selectinload(ContentDraft.topic)
+            .selectinload(Topic.scored_signal)
+            .selectinload(ScoredSignal.signal),
         )
     )
     result = await session.execute(stmt)
@@ -75,6 +79,8 @@ async def stage_drafts(
     counts = {"staged": 0, "errors": 0}
 
     for draft in drafts:
+        # Cache identifiers before any DB ops that might expire the object
+        draft_id = draft.id
         try:
             topic = draft.topic
             composite_score = 0.0
@@ -112,26 +118,31 @@ async def stage_drafts(
                 },
             )
 
-            # Attach generation metadata as a comment so it's visible in Notion
-            # without cluttering the page body.
-            metadata = {
-                "model": draft.model_used,
-                "generated_at": (
-                    draft.generated_at.isoformat() if draft.generated_at else None
-                ),
-                "generation_metadata": draft.generation_metadata,
-            }
-            await client.add_comment(page_id, json.dumps(metadata, indent=2))
+            # Attach generation metadata as a comment (non-fatal if permissions missing)
+            try:
+                metadata = {
+                    "model": draft.model_used,
+                    "generated_at": (
+                        draft.generated_at.isoformat() if draft.generated_at else None
+                    ),
+                    "generation_metadata": draft.generation_metadata,
+                }
+                await client.add_comment(page_id, json.dumps(metadata, indent=2))
+            except NotionWriteError:
+                logger.warning(
+                    "Could not add comment to page %s (check integration permissions)",
+                    page_id,
+                )
 
             # Bidirectional link: store Notion page ID on the draft row so the
             # approval UI can deep-link directly to the Notion page.
             draft.notion_page_id = page_id
             counts["staged"] += 1
 
-            logger.info("Staged draft %s → Notion page %s", draft.id, page_id)
+            logger.info("Staged draft %s → Notion page %s", draft_id, page_id)
 
         except (NotionWriteError, Exception) as exc:
-            logger.error("Failed to stage draft %s: %s", draft.id, exc)
+            logger.error("Failed to stage draft %s: %s", draft_id, exc)
             alert = SystemAlert(
                 source="notion",
                 alert_type="notion_write_failed",

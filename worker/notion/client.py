@@ -91,6 +91,53 @@ class NotionClient:
         self._database_id = database_id
         self._client = Client(auth=api_key)
 
+    async def setup_database(self) -> None:
+        """Ensure the target database has all required properties.
+
+        Uses the Notion REST API directly (with explicit API version header)
+        because the notion-client SDK may use a different API version that
+        doesn't return properties. Safe to call multiple times — Notion
+        ignores properties that already exist.
+
+        Should be called once before the first staging run.
+        """
+        import httpx
+
+        properties = {
+            "Platform": {"select": {"options": [
+                {"name": "Substack"}, {"name": "Twitter"},
+                {"name": "Linkedin"}, {"name": "Instagram"},
+            ]}},
+            "Composite Score": {"number": {}},
+            "Score Breakdown": {"rich_text": {}},
+            "Generated At": {"date": {}},
+            "Topic ID": {"rich_text": {}},
+            "Thesis Provided": {"checkbox": {}},
+            "Model Used": {"rich_text": {}},
+            "Token Cost": {"number": {}},
+            # Note: "Status" is NOT created here — it already exists as a
+            # native Notion status property on the database. We use it as-is.
+        }
+
+        try:
+            async with httpx.AsyncClient() as http:
+                resp = await http.patch(
+                    f"https://api.notion.com/v1/databases/{self._database_id}",
+                    headers={
+                        "Authorization": f"Bearer {self._client.options.auth}",
+                        "Notion-Version": "2022-06-28",
+                        "Content-Type": "application/json",
+                    },
+                    json={"properties": properties},
+                )
+                resp.raise_for_status()
+            logger.info("Database properties ensured for %s", self._database_id)
+        except Exception as exc:
+            logger.error("Failed to update database properties: %s", exc)
+            raise NotionWriteError(f"Failed to setup database: {exc}") from exc
+        finally:
+            await asyncio.sleep(_RATE_LIMIT_DELAY)
+
     async def create_page(
         self,
         title: str,
@@ -144,7 +191,7 @@ class NotionClient:
         notion_properties = {
             "Title": {"title": [{"text": {"content": title}}]},
             "Platform": {"select": {"name": platform.capitalize()}},
-            "Status": {"select": {"name": "Draft"}},
+            "Status": {"status": {"name": "Draft"}},
             "Composite Score": {"number": composite_score},
             "Score Breakdown": {
                 "rich_text": [{"text": {"content": score_breakdown}}]
