@@ -86,13 +86,13 @@ async def test_signal_strength_three_plus_cross_platform():
 
 @pytest.mark.asyncio
 async def test_signal_strength_three_same_platform():
-    """3+ signals but only 2 distinct sources scores 40."""
+    """3+ signals but fewer than 3 platforms scores 70."""
     signal = _make_signal(source="rss")
-    # Two corroborating signals but one is same source as original
+    # Two corroborating signals: 3 total signals, 2 distinct platforms
     session = _mock_session_with_sources(["rss", "reddit"])
     score = await score_signal_strength(signal, session)
-    # rss + rss + reddit = 2 distinct sources
-    assert score == 40
+    # 3 signals (rss + rss + reddit) but only 2 platforms → 70
+    assert score == 70
 
 
 # ---------------------------------------------------------------------------

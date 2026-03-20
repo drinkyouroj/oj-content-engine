@@ -28,7 +28,7 @@ from worker.app.models.scored_signal import ScoredSignal, ScoringStatus
 from worker.app.models.signal import Signal
 from worker.scoring.adjustments import apply_adjustments
 from worker.scoring.pass1 import compute_pass1_scores
-from worker.scoring.pass2 import score_with_llm
+from worker.scoring.pass2 import LLMScoringError, score_with_llm
 from worker.scoring.rubric import PASS1_PREFILTER_THRESHOLD, WEIGHTS
 
 logger = logging.getLogger(__name__)
@@ -115,11 +115,27 @@ async def score_signal(
         return scored_signal
 
     # Step 6: Pass 2 — LLM scoring
-    pass2_scores = await score_with_llm(signal, anthropic_api_key)
+    try:
+        pass2_scores = await score_with_llm(signal, anthropic_api_key)
+    except LLMScoringError:
+        logger.error("LLM scoring failed for signal %s — marking as failed", signal_id)
+        scored_signal = ScoredSignal(
+            signal_id=signal_id,
+            score_breakdown={d: scores.get(d, 0) for d in WEIGHTS},
+            composite_score=0,
+            status=ScoringStatus.FAILED,
+            pass1_completed_at=pass1_completed,
+        )
+        session.add(scored_signal)
+        await session.flush()
+        return scored_signal
     pass2_completed = datetime.now(timezone.utc)
 
     # Merge Pass 2 into scores
     scores.update(pass2_scores)
+
+    # Re-apply adjustments to catch Pass 2 dimension adjustments
+    scores = await apply_adjustments(scores, signal, session)
 
     # Step 7: Timing conditional cap
     if scores["timing_window"] == 100 and scores["novelty"] < 50:

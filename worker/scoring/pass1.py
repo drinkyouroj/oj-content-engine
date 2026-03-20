@@ -55,18 +55,20 @@ async def score_signal_strength(signal: Signal, session: AsyncSession) -> int:
         )
     )
     result = await session.execute(stmt)
-    corroborating_sources = {row[0] for row in result.fetchall()}
+    corroborating_rows = result.fetchall()
 
-    # Include the signal's own source
-    all_sources = corroborating_sources | {signal.source}
-    distinct_count = len(all_sources)
+    # Total signal count (corroborating + this one)
+    total_signals = len(corroborating_rows) + 1
 
-    if distinct_count >= 3:
-        # Cross-platform means more than one unique source enum value
-        if len(all_sources) >= 3:
-            return 100
-        return 70
-    if distinct_count == 2:
+    # Distinct platforms (source enum values)
+    all_platforms = {row[0] for row in corroborating_rows} | {signal.source}
+    distinct_platforms = len(all_platforms)
+
+    if total_signals >= 3:
+        if distinct_platforms >= 3:
+            return 100  # 3+ signals from 3+ platforms
+        return 70  # 3+ signals but fewer than 3 platforms
+    if total_signals == 2:
         return 40
     return 10
 

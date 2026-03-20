@@ -101,7 +101,9 @@ async def test_scores_clamped_to_range():
 
 @pytest.mark.asyncio
 async def test_retry_on_failure():
-    """Retries up to 3 times on API failure, then returns defaults."""
+    """Retries up to 3 times on API failure, then raises LLMScoringError."""
+    from worker.scoring.pass2 import LLMScoringError
+
     signal = _make_signal()
 
     mock_client = AsyncMock()
@@ -112,10 +114,10 @@ async def test_retry_on_failure():
     with (
         patch("worker.scoring.pass2.anthropic.AsyncAnthropic", return_value=mock_client),
         patch("asyncio.sleep", new_callable=AsyncMock),
+        pytest.raises(LLMScoringError),
     ):
-        result = await score_with_llm(signal, "sk-test-key")
+        await score_with_llm(signal, "sk-test-key")
 
-    assert result == _DEFAULT_SCORES
     assert mock_client.messages.create.call_count == 3
 
 
@@ -146,7 +148,9 @@ async def test_retry_succeeds_on_second_attempt():
 
 @pytest.mark.asyncio
 async def test_invalid_json_response():
-    """Invalid JSON in response triggers retry and eventual default."""
+    """Invalid JSON in response triggers retry and eventual LLMScoringError."""
+    from worker.scoring.pass2 import LLMScoringError
+
     signal = _make_signal()
 
     content_block = MagicMock()
@@ -160,10 +164,9 @@ async def test_invalid_json_response():
     with (
         patch("worker.scoring.pass2.anthropic.AsyncAnthropic", return_value=mock_client),
         patch("asyncio.sleep", new_callable=AsyncMock),
+        pytest.raises(LLMScoringError),
     ):
-        result = await score_with_llm(signal, "sk-test-key")
-
-    assert result == _DEFAULT_SCORES
+        await score_with_llm(signal, "sk-test-key")
 
 
 @pytest.mark.asyncio

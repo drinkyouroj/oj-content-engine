@@ -23,6 +23,10 @@ from typing import Any
 
 import anthropic
 
+
+class LLMScoringError(Exception):
+    """Raised when LLM scoring fails after all retries."""
+
 logger = logging.getLogger(__name__)
 
 # Model used for scoring — Haiku for speed and cost efficiency
@@ -126,7 +130,9 @@ async def score_with_llm(
         getattr(signal, "id", "unknown"),
         last_error,
     )
-    return dict(_DEFAULT_SCORES)
+    raise LLMScoringError(
+        f"LLM scoring failed after {_MAX_RETRIES} retries: {last_error}"
+    ) from last_error
 
 
 def _build_user_prompt(signal: Any) -> str:
