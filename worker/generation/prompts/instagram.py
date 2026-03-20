@@ -59,13 +59,18 @@ def _format_thesis(thesis: str | None) -> str:
 def _format_exemplars(exemplars: list[str]) -> str:
     header = (
         "== VOICE REFERENCE EXAMPLES ==\n\n"
-        "Use these for tone calibration. Instagram voice is the most compressed "
-        "version of the brand: punchy, visual-first, every word earns its spot.\n"
+        "These examples show the writing STYLE only. Ignore their subject matter. "
+        "Study tone and compression. Instagram voice is the most compressed "
+        "version of the brand: punchy, visual-first, every word earns its spot.\n\n"
+        "DO NOT write about the subjects in these examples. Write about the TOPIC above.\n"
     )
-    numbered = "\n\n".join(
-        f"--- Example {i + 1} ---\n{ex}" for i, ex in enumerate(exemplars)
-    )
-    return f"{header}\n{numbered}"
+    truncated = []
+    for i, ex in enumerate(exemplars):
+        excerpt = ex[:800]
+        if len(ex) > 800:
+            excerpt = excerpt.rsplit(" ", 1)[0] + " [...]"
+        truncated.append(f"--- Voice Example {i + 1} ---\n{excerpt}")
+    return f"{header}\n" + "\n\n".join(truncated)
 
 
 _PLATFORM_INSTRUCTIONS = """\
