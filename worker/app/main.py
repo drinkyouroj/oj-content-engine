@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager
 
-from arq.connections import RedisSettings, create_pool
+from arq.connections import RedisSettings
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
@@ -76,18 +76,21 @@ async def check_db() -> bool:
 
 
 async def check_redis() -> bool:
-    """Check Redis connectivity by creating a pool and pinging.
+    """Check Redis connectivity via direct redis-py connection.
+
+    Uses redis-py directly instead of arq.create_pool to avoid
+    repeated retry delays on health checks.
 
     Returns:
         True if Redis is reachable, False otherwise.
     """
-    if _redis_settings is None:
-        return False
     try:
-        pool = await create_pool(_redis_settings)
-        await pool.ping()
-        await pool.close()
-        return True
+        from redis.asyncio import Redis
+        settings = get_settings()
+        r = Redis.from_url(settings.arq_redis_url, decode_responses=True)
+        pong = await r.ping()
+        await r.aclose()
+        return pong
     except Exception:
         logger.exception("Redis health check failed")
         return False
