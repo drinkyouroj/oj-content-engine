@@ -98,6 +98,7 @@ export async function getRecentDrafts() {
   return sql`
     SELECT
       cd.id,
+      cd.topic_id,
       cd.platform,
       cd.status,
       cd.notion_page_id,
@@ -108,7 +109,7 @@ export async function getRecentDrafts() {
     JOIN scored_signals ss ON t.scored_signal_id = ss.id
     JOIN signals s ON ss.signal_id = s.id
     ORDER BY cd.created_at DESC
-    LIMIT 10
+    LIMIT 20
   `;
 }
 
