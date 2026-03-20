@@ -270,7 +270,7 @@ export default async function ReviewPage({
       {/* ---- Actions ---- */}
       <section>
         <h2 className="mb-3 text-sm font-medium text-zinc-400">Actions</h2>
-        <TopicActions topicId={topicId} topicStatus={topic.status} />
+        <TopicActions topicId={topicId} topicStatus={topic.status} hasDrafts={draftsWithMeta.length > 0} />
       </section>
     </div>
   );
