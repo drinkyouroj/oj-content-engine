@@ -41,11 +41,11 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 GENERATION_MODELS: dict[str, dict[str, str]] = {
-    "substack": {"provider": "groq", "model": "llama-3.3-70b-versatile"},
+    "substack": {"provider": "anthropic", "model": "claude-sonnet-4-6"},
     "twitter": {"provider": "groq", "model": "llama-3.3-70b-versatile"},
     "linkedin": {"provider": "groq", "model": "llama-3.3-70b-versatile"},
     "instagram": {"provider": "groq", "model": "llama-3.3-70b-versatile"},
-    "substack_critique": {"provider": "groq", "model": "llama-3.3-70b-versatile"},
+    "substack_critique": {"provider": "anthropic", "model": "claude-sonnet-4-6"},
 }
 
 
