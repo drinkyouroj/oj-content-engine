@@ -212,26 +212,25 @@ export async function searchResearch(
 }
 
 /**
- * Creates topics directly from selected research articles, skipping scoring.
+ * Creates one synthesized topic from multiple research articles.
  *
- * POSTs to the Worker's /api/create-topics endpoint with an array of
- * article objects. The Worker creates topic records in Postgres for each
- * article, bypassing the normal discovery → scoring pipeline. Returns
- * counts of created/skipped topics and their IDs.
+ * POSTs to the Worker's /api/create-topic endpoint with an array of
+ * article objects. The Worker combines them into a single topic with a
+ * synthesized title and body, storing all source URLs in source_metrics.
  *
- * @param articles Array of article objects with title and url (body_preview and source optional)
- * @returns Object containing created count, skipped count, and topic IDs
+ * @param articles Array of article objects with title and url
+ * @returns Object containing topic_id, synthesized title, and source count
  * @throws WorkerClientError if WORKER_URL or WORKER_SECRET are not configured
  * @throws WorkerClientError if the Worker API returns a non-2xx response
  */
-export async function createTopicsFromArticles(
+export async function createTopicFromArticles(
   articles: Array<{
     title: string;
     url: string;
     body_preview?: string;
     source?: string;
   }>
-): Promise<{ created: number; skipped: number; topic_ids: string[] }> {
+): Promise<{ topic_id: string; title: string; source_count: number }> {
   const workerUrl = process.env.WORKER_URL;
   const workerSecret = process.env.WORKER_SECRET;
 
@@ -239,7 +238,7 @@ export async function createTopicsFromArticles(
     throw new WorkerClientError("WORKER_URL or WORKER_SECRET not configured");
   }
 
-  const response = await fetch(`${workerUrl}/api/create-topics`, {
+  const response = await fetch(`${workerUrl}/api/create-topic`, {
     method: "POST",
     headers: {
       "x-worker-secret": workerSecret,
@@ -254,8 +253,8 @@ export async function createTopicsFromArticles(
   }
 
   return response.json() as Promise<{
-    created: number;
-    skipped: number;
-    topic_ids: string[];
+    topic_id: string;
+    title: string;
+    source_count: number;
   }>;
 }

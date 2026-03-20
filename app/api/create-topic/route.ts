@@ -1,19 +1,16 @@
 /**
- * POST /api/create-topics — Proxy route for creating topics from research articles.
+ * POST /api/create-topic — Create one synthesized topic from multiple research articles.
  *
  * Accepts an array of article objects and forwards them to the Worker's
- * /api/create-topics endpoint, which creates topic records in Postgres
- * bypassing the normal discovery → scoring pipeline.
+ * /api/create-topic endpoint, which synthesizes a single topic from the
+ * combined articles, storing all source URLs for reference.
  *
  * Request body: { articles: Array<{ title: string; url: string; body_preview?: string; source?: string }> }
- * Response: { created: number; skipped: number; topic_ids: string[] }
- *
- * @throws 400 if articles is missing, not an array, or empty
- * @throws 502 if the Worker API is unreachable or returns an error
+ * Response: { topic_id: string; title: string; source_count: number }
  */
 import { NextRequest, NextResponse } from "next/server";
 
-import { createTopicsFromArticles, WorkerClientError } from "@/lib/worker-client";
+import { createTopicFromArticles, WorkerClientError } from "@/lib/worker-client";
 
 export async function POST(request: NextRequest) {
   const { articles } = await request.json();
@@ -26,7 +23,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const result = await createTopicsFromArticles(articles);
+    const result = await createTopicFromArticles(articles);
     return NextResponse.json(result);
   } catch (error) {
     if (error instanceof WorkerClientError) {

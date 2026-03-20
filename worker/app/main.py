@@ -403,33 +403,32 @@ class ArticleInput(BaseModel):
     source: str = "web"
 
 
-class CreateTopicsRequest(BaseModel):
-    """Request body for the /api/create-topics endpoint."""
+class CreateTopicRequest(BaseModel):
+    """Request body for the /api/create-topic endpoint."""
 
     articles: list[ArticleInput]
 
 
-@app.post("/api/create-topics")
-async def create_topics_endpoint(
-    body: CreateTopicsRequest,
+@app.post("/api/create-topic")
+async def create_topic_endpoint(
+    body: CreateTopicRequest,
     x_worker_secret: str = Header(None),
 ):
-    """Create topics directly from selected research articles, skipping scoring.
+    """Create one synthesized topic from multiple research articles.
 
-    For each article, creates a Signal (or reuses an existing one based on
-    dedup hash) and then creates a Topic in QUEUED status. Articles that
-    already have a Topic are skipped. This allows the research UI to fast-track
-    manually selected articles into the content generation pipeline.
+    Combines selected articles into a single Signal with a synthesized title
+    and body preview. All source URLs are stored in source_metrics for
+    reference during thesis generation and content creation.
 
-    Estimated runtime: <500ms (DB reads + writes only).
+    Estimated runtime: <500ms (DB writes only, no LLM).
     Failure mode: 401 on bad secret, 503 if not ready, 500 on DB error.
 
     Args:
-        body: CreateTopicsRequest containing a list of articles.
+        body: CreateTopicRequest containing a list of articles.
         x_worker_secret: Shared secret from the x-worker-secret header.
 
     Returns:
-        JSON with "created" count, "skipped" count, and "topic_ids" list.
+        JSON with topic_id, synthesized title, and source_count.
 
     Raises:
         HTTPException 401: If the secret is missing or incorrect.
@@ -440,76 +439,67 @@ async def create_topics_endpoint(
     if _session_factory is None:
         raise HTTPException(status_code=503, detail="Worker not ready")
 
-    from sqlalchemy import select
+    import hashlib
 
-    from worker.app.models.scored_signal import ScoredSignal
     from worker.app.models.signal import Signal, SignalSource
     from worker.app.models.topic import Topic, TopicStatus
-    from worker.discovery.dedup import compute_dedup_hash, normalize_url
 
-    created = 0
-    skipped = 0
-    topic_ids: list[str] = []
+    articles = body.articles
+    if not articles:
+        raise HTTPException(status_code=400, detail="At least one article required")
+
+    # Synthesize a combined title from article titles
+    if len(articles) == 1:
+        synth_title = articles[0].title
+    else:
+        # Use the first article's title as the primary, note the count
+        synth_title = f"{articles[0].title} (+{len(articles) - 1} related)"
+
+    # Combine body previews
+    body_parts = []
+    for a in articles:
+        if a.body_preview:
+            body_parts.append(f"[{a.title}] {a.body_preview}")
+    synth_body = "\n\n".join(body_parts)[:2000] if body_parts else None
+
+    # Collect source URLs
+    source_urls = [a.url for a in articles]
+
+    # Create a dedup hash from all URLs combined (sorted for stability)
+    combined = "\n".join(sorted(source_urls))
+    dedup_hash = hashlib.sha256(combined.encode("utf-8")).hexdigest()
 
     async with _session_factory() as session:
-        for article in body.articles:
-            normalized = normalize_url(article.url)
-            dedup_hash = compute_dedup_hash(normalized)
+        # Create one synthesized signal
+        signal = Signal(
+            source=SignalSource.MANUAL,
+            url=source_urls[0],  # primary URL
+            title=synth_title,
+            body_preview=synth_body,
+            discovered_at=datetime.now(timezone.utc),
+            source_metrics={"source_urls": source_urls, "source_count": len(source_urls)},
+            dedup_hash=dedup_hash,
+        )
+        session.add(signal)
+        await session.flush()
 
-            # Check for existing signal — reuse it if found
-            existing = await session.execute(
-                select(Signal.id).where(Signal.dedup_hash == dedup_hash)
-            )
-            existing_signal_id = existing.scalar_one_or_none()
-
-            if existing_signal_id is not None:
-                # Signal exists — check if a topic already exists for it
-                existing_topic = await session.execute(
-                    select(Topic.id).where(
-                        (Topic.signal_id == existing_signal_id)
-                        | (
-                            Topic.scored_signal_id.in_(
-                                select(ScoredSignal.id).where(
-                                    ScoredSignal.signal_id == existing_signal_id
-                                )
-                            )
-                        )
-                    )
-                )
-                if existing_topic.scalar_one_or_none() is not None:
-                    skipped += 1
-                    continue
-
-                signal_id = existing_signal_id
-            else:
-                signal = Signal(
-                    source=SignalSource.MANUAL,
-                    url=article.url,
-                    title=article.title,
-                    body_preview=(article.body_preview or "")[:500] or None,
-                    discovered_at=datetime.now(timezone.utc),
-                    source_metrics=None,
-                    dedup_hash=dedup_hash,
-                )
-                session.add(signal)
-                await session.flush()
-                signal_id = signal.id
-
-            topic = Topic(
-                signal_id=signal_id,
-                scored_signal_id=None,
-                status=TopicStatus.QUEUED,
-                queued_at=datetime.now(timezone.utc),
-            )
-            session.add(topic)
-            await session.flush()
-
-            topic_ids.append(str(topic.id))
-            created += 1
+        # Create one topic
+        topic = Topic(
+            signal_id=signal.id,
+            scored_signal_id=None,
+            status=TopicStatus.QUEUED,
+            queued_at=datetime.now(timezone.utc),
+        )
+        session.add(topic)
+        await session.flush()
 
         await session.commit()
 
-    return {"created": created, "skipped": skipped, "topic_ids": topic_ids}
+    return {
+        "topic_id": str(topic.id),
+        "title": synth_title,
+        "source_count": len(source_urls),
+    }
 
 
 @app.get("/health")
