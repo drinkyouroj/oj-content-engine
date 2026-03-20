@@ -36,3 +36,4 @@ class VoiceExemplar(UUIDPrimaryKey, TimestampMixin, Base):
     active: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default="true", nullable=False
     )
+    vertical: Mapped[str] = mapped_column(Text, default="general", server_default="general", nullable=False)
