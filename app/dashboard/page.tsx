@@ -16,10 +16,12 @@
 // and must not be statically prerendered at build time.
 export const dynamic = "force-dynamic";
 
+import Link from "next/link";
 import { getDashboardStats, getTopicsNeedingAttention, getRecentDrafts } from "@/lib/db";
 import { StatsCards } from "@/components/stats-cards";
 import { TopicList } from "@/components/topic-list";
 import { RecentDrafts } from "@/components/recent-drafts";
+import { Button } from "@/components/ui/button";
 import type { TopicRow } from "@/components/topic-list";
 import type { DraftRow } from "@/components/recent-drafts";
 
@@ -39,7 +41,17 @@ export default async function DashboardPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-6">Dashboard</h1>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold">Dashboard</h1>
+        <Link href="/dashboard/research">
+          <Button
+            variant="outline"
+            className="border-zinc-700 text-zinc-300 hover:border-[#00B4D8] hover:text-[#00B4D8]"
+          >
+            Research Topics
+          </Button>
+        </Link>
+      </div>
 
       <StatsCards {...stats} />
 
