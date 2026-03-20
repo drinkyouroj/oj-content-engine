@@ -60,10 +60,71 @@ Twitter, LinkedIn, and Instagram are single-pass only. Short formats don't have 
 
 | Platform | Length | Structure | Special |
 |----------|--------|-----------|---------|
-| Substack | 1,500-2,500 words | Hook → analysis → contrarian conclusion | Two-pass (draft + voice-drift critique) |
+| Substack | 1,500-1,600 words (hard ceiling 1,700) | Template-based (see below) | Two-pass (draft + voice-drift critique), image prompts, footnoted sources |
 | Twitter | 5-12 tweets, each <= 280 chars | Hook tweet → substance → CTA | Thread format, character count enforced |
 | LinkedIn | 300-600 words | Opening hook → 3 insight paragraphs → closing | Professional but honest tone |
 | Instagram | 150-word caption + image card prompt | Visual concept + concise caption | Image card prompt stored as text, no actual image generation |
+
+### Substack Writing Guidelines
+
+Sourced from Justin's existing `SUBSTACK_AUTOPILOT.md` — these are battle-tested rules, not suggestions.
+
+**Article templates** (selected per topic based on best fit):
+
+- **Triple Connection:** The Spark (400w) → The Pattern (500w) → The Protocol (400w) → Personal Code (200-300w)
+- **System Audit:** The Glitch (400w) → The Source Code (500w) → The Upgrade (400w) → My Debug (200-300w)
+- **Concept Decoder:** The Definition (300w) → The Mechanics (600w) → The Applications (400w) → The Human Element (200-300w)
+- **Pattern Report (Listicle):** Intro (200-250w) → 7-10 Pattern Items (100-150w each) → The Meta-Pattern (200-250w)
+
+Template selection is included in the generation prompt. The LLM chooses the best-fit template based on topic type.
+
+**Voice rules (non-negotiable):**
+- Tone: witty, irreverent, analytical — intellectual stand-up comedy
+- Vary sentence beginnings: prepositional phrases, rhetorical questions, adverbs, one-word beats
+- Build with longer complex sentences, then hit with short emphasis sentences
+- Active voice always — name the actor
+- Every abstract concept gets a vivid tangible metaphor
+- Everyday language, intellectual depth — no pretension
+- State directly when certain; hedge only with genuine doubt
+
+**Hard bans:**
+- NO em dashes (—)
+- NO "Picture this" openings
+- NEVER use: delve, tapestry, vibrant, landscape, realm, embark, moreover, notably, pivotal, arguably
+- NEVER use: "Everyone wants to," "Without further ado," "Have you ever wondered"
+- NO excessive parallelism: "It's not about X, it's about Y"
+- NO passive constructions that hide the actor
+
+**Title rules:** 60 chars max, makes a claim or challenges an assumption, no colons, no "How to," no question marks, intellectual irreverence not cuteness.
+
+**Subtitle rules:** 150 chars max, clarifies the angle, complements the title's punch.
+
+**Structure requirements:**
+- Each section begins with a thesis sentence previewing the journey
+- 3-4 image markers at strategic visual moments, each with: Flux/Midjourney prompt (50-80 words), alt text, punchy 1-sentence caption
+- All stats and news claims: footnoted with full source URL
+- End with thought-provoking question OR clear point, not both
+- Personal anecdote woven naturally, never forced
+
+**Personal integration (weave in 1-2 naturally per article):**
+- Relocated from Seattle to Michigan recently
+- 15+ years in systems administration and technical support
+- Spent years in web3/blockchain, left after burnout and disillusionment (Gala Games)
+- Large-scale Discord community moderation experience
+- Anti-bureaucracy; values direct, authentic communication over corporate jargon
+
+**Self-review checklist** (applied during voice-drift critique pass):
+- No banned words or phrases
+- No em dashes
+- Sentence beginnings vary throughout
+- Every abstract concept has a concrete metaphor
+- Active voice; actors named
+- Word count within bounds
+- All stats have source URLs
+- No speculation presented as fact
+- Technical terms defined before use
+- No concept explained twice
+- Ending is thought-provoking question OR clear point, not both
 
 ### Quality Comparison Tests
 
@@ -149,7 +210,7 @@ Worker writes drafts to the Second Brain database (`b6ef1af3-2b70-4346-a107-e4b2
 
 | Property | Type | Source |
 |----------|------|--------|
-| Title | Title | `[Platform] Topic Title` (e.g., `[Substack] The AI Safety Theater Problem`) |
+| Title | Title | `[Platform] Draft Title` — for Substack, uses the LLM-generated title (60 chars max, per title rules); for other platforms, uses topic title |
 | Platform | Select | substack / twitter / linkedin / instagram |
 | Status | Select | Draft (initial value) |
 | Composite Score | Number | From `scored_signal.composite_score` |
@@ -163,7 +224,7 @@ Worker writes drafts to the Second Brain database (`b6ef1af3-2b70-4346-a107-e4b2
 ### Page Body
 
 The draft content, formatted for the target platform:
-- Substack: full article with markdown heading hierarchy
+- Substack: full article with markdown heading hierarchy, image markers with prompts/alt-text/captions, footnoted sources section
 - Twitter: numbered tweets with character counts
 - LinkedIn: formatted post
 - Instagram: caption text + image card prompt (separated by a divider)
