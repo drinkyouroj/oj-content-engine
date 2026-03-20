@@ -14,13 +14,20 @@
  * directly (no SDK) to keep the dependency surface minimal.
  */
 
+// Map our internal statuses to Notion's default Status property options.
+// Notion status type has groups: "Not started", "In progress", "Done".
+// We map Approved → Done, Killed → Not started (closest available).
+const STATUS_MAP: Record<string, string> = {
+  Approved: "Done",
+  Killed: "Not started",
+};
+
 /**
  * Updates the Status property on one or more Notion pages.
  *
  * Called after approve (status = "Approved") or reject (status = "Killed")
- * to mirror the decision into Notion. Each page is updated sequentially to
- * avoid Notion API rate limits. If any update fails, the error is logged and
- * the function returns false, but remaining pages are still attempted.
+ * to mirror the decision into Notion. Maps to Notion's default status
+ * options: Approved → "Done", Killed → "Not started".
  *
  * No-ops silently if NOTION_API_KEY is not set or notionPageIds is empty,
  * returning true so callers treat a missing config as success.
@@ -49,7 +56,7 @@ export async function syncNotionStatus(
         },
         body: JSON.stringify({
           properties: {
-            Status: { status: { name: status } },
+            Status: { status: { name: STATUS_MAP[status] ?? status } },
           },
         }),
       });
