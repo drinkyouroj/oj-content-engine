@@ -30,8 +30,8 @@ interface ResearchArticle {
   title: string;
   url: string;
   source: string;
-  body: string;
-  published: string | null;
+  body_preview: string;
+  published_at: string | null;
 }
 
 /** Response shape from POST /api/research. */
@@ -334,15 +334,15 @@ export function ResearchResults() {
                       {displayUrl(article.url)}
                     </a>
 
-                    {article.body && (
+                    {article.body_preview && (
                       <p className="text-xs leading-relaxed text-zinc-400">
-                        {truncate(article.body)}
+                        {truncate(article.body_preview)}
                       </p>
                     )}
 
-                    {article.published && (
+                    {article.published_at && (
                       <p className="text-xs text-zinc-600">
-                        {new Date(article.published).toLocaleDateString("en-US", {
+                        {new Date(article.published_at).toLocaleDateString("en-US", {
                           year: "numeric",
                           month: "short",
                           day: "numeric",
