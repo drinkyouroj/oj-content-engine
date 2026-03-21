@@ -7,35 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] — 2026-03-20
+
 ### Added
-- Project initialization: CLAUDE.md, PRD, docs structure, decision log
-- Architecture documentation (docs/architecture.md)
-- Decision 001: Vercel + Worker two-host split
-- Decision 002: Upstash Redis over self-hosted Redis
-- Environment variable template (.env.example)
-- Worker layer scaffold: FastAPI + ARQ + Docker (Railway)
-- Postgres schema: 7 tables (signals, scored_signals, topics, content_drafts, voice_exemplars, scoring_adjustments, system_alerts)
-- Alembic async migration framework with initial migration
-- Health endpoint (/health) with DB and Redis connectivity checks
-- Decision docs: 003 (SQLAlchemy ORM), 004 (no local dev containers)
-- Content generation engine with 3-layer prompt architecture (system + context + generation)
-- Per-platform prompt templates (Substack, Twitter, LinkedIn, Instagram)
-- Voice-drift self-critique for Substack long-form (second LLM pass)
-- Configurable LLM provider per platform (Groq default, Anthropic upgrade path)
-- Vertical-aware voice exemplar selection (sports_seahawks, ai_politics, depin, media, personal)
-- Notion staging with rate-limited API client and bidirectional linking
-- Exemplar seeding script for Substack articles
-- Model quality comparison script (Groq vs Anthropic)
-- Rubric expansion: sports/Seahawks, media, personal keywords
-- Approval UI: Next.js dashboard with topic review and content approval workflow
+- Full end-to-end content pipeline: discover → score → triage → thesis → generate → stage → approve
+- Trend discovery: RSS, Reddit (via RSS feeds), Hacker News, Twitter/X pollers
+- Two-pass signal scoring: Pass 1 rule-based, Pass 2 LLM-assisted (Claude Haiku)
+- Triage engine with hard gates and composite score thresholds
+- Content generation: Substack (Sonnet + voice-drift critique), social on-demand (Haiku 4.5)
+- Substack-first generation flow: Substack generates automatically, social content (Twitter, LinkedIn, Instagram) generated on-demand from the Substack article
+- Voice exemplar system with vertical-aware selection
+- Notion staging with rate-limited API client and bidirectional status sync
+- Approval UI: Next.js dashboard with topic review, score breakdown, thesis input, draft previews
+- Steered topic research: `/dashboard/research` page with Brave Search + DB signal search, synthesized multi-source topics
+- Thesis suggestion system (Claude Haiku generates 3-5 thesis candidates)
+- Auto-refresh on the review page while content is generating
+- Structured JSON logging across all pipeline stages with timing and context
 - Token-based authentication via middleware
-- Dashboard overview with stats cards and topic list
-- Topic review page with score breakdown, thesis input, platform draft previews
-- API routes: approve, reject, thesis, topic-action, regenerate, health
-- Notion status sync on approve/reject (best-effort)
-- Worker regeneration endpoint (POST /api/regenerate/{topic_id})
+- Cloud deployment: Vercel (Next.js) + Railway (Worker with Docker)
+- GitHub Actions CI: TypeScript check + Next.js build + ruff lint + pytest
+- Runbooks: local dev setup, deploy worker, deploy vercel, add new platform
+- API reference documentation for Worker endpoints and Notion schema
+- 5 architecture decision records
+- 244 Python tests across all pipeline stages
 
 ### Changed
-- Expanded RESONANCE_TAXONOMY with multi-vertical keywords
-- Added `vertical` column to voice_exemplars and topics tables
-- Added `generation_metadata` JSONB column to content_drafts table
+- Reddit poller switched from blocked JSON API to public RSS feeds
+- Social content models changed from Groq (llama-3.3-70b) to Anthropic Claude Haiku 4.5
+- Source citations in Substack prompts now restricted to provided URLs only (no more SOURCE NEEDED placeholders)
+- Database: added `signal_id` direct FK on topics, `scored_signal_id` made nullable for steered topics
+- All DB queries use LEFT JOIN + COALESCE for nullable scored_signal support

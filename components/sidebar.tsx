@@ -66,7 +66,7 @@ export function Sidebar() {
       {/* Version */}
       <div className="px-5 py-4">
         <Separator className="mb-4 bg-zinc-800" />
-        <p className="text-xs text-zinc-600">v0.3.0</p>
+        <p className="text-xs text-zinc-600">v1.0.0</p>
       </div>
     </aside>
   );

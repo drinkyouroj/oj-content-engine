@@ -1,6 +1,6 @@
 [project]
 name = "oj-content-engine-worker"
-version = "0.1.0"
+version = "1.0.0"
 description = "Worker layer for the OJ Content Engine pipeline"
 requires-python = ">=3.12"
 dependencies = [
