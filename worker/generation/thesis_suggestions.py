@@ -19,7 +19,7 @@ import re
 import httpx
 from bs4 import BeautifulSoup
 
-from worker.generation.llm_client import LLMClient, LLMGenerationError, get_model_config
+from worker.generation.llm_client import LLMClient, get_model_config
 
 logger = logging.getLogger(__name__)
 

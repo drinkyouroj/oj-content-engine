@@ -14,7 +14,6 @@ from datetime import datetime, timezone
 import pytest
 
 from worker.app.models import (
-    Base,
     ContentDraft,
     DraftStatus,
     Platform,

@@ -1,7 +1,6 @@
 """Tests for vertical detection from topic text."""
 from __future__ import annotations
 
-import pytest
 
 from worker.generation.verticals import detect_vertical, VERTICAL_KEYWORDS
 

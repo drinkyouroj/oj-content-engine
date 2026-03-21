@@ -8,8 +8,7 @@ required.
 
 from __future__ import annotations
 
-import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -58,7 +57,7 @@ async def test_create_page_returns_page_id() -> None:
     """
     fake_page = {"id": "page-abc-123"}
 
-    with patch("notion.client.Client") as MockClient, patch(
+    with patch("notion.client.Client"), patch(
         "notion.client.asyncio.to_thread", new_callable=AsyncMock
     ) as mock_to_thread, patch(
         "notion.client.asyncio.sleep", new_callable=AsyncMock

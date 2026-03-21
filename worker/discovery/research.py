@@ -7,7 +7,6 @@ results. Used by the /api/research endpoint for on-demand topic research.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
 
 import httpx
 from sqlalchemy import select, or_

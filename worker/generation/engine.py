@@ -32,6 +32,7 @@ from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from worker.app.models.content_draft import ContentDraft, DraftStatus, Platform
+from worker.app.models.signal import Signal
 from worker.app.models.system_alert import SystemAlert
 from worker.app.models.topic import Topic, TopicStatus
 from worker.generation.exemplar_selector import select_exemplars
@@ -63,7 +64,6 @@ def get_signal(topic: Topic) -> "Signal":
     Raises:
         ValueError: If neither signal_id nor scored_signal_id is set.
     """
-    from worker.app.models.signal import Signal  # noqa: F811
 
     if topic.signal is not None:
         return topic.signal

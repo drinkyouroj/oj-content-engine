@@ -7,7 +7,6 @@ signal extraction, and error handling without network access.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 
 import httpx
 import pytest

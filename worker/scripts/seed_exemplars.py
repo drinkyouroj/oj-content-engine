@@ -26,9 +26,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import sys
-from typing import Any
 
 import httpx
 from bs4 import BeautifulSoup

@@ -18,7 +18,6 @@ import logging
 import time
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from worker.app.config import get_settings
 from worker.app.database import make_engine, make_session_factory

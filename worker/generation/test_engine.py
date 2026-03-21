@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from worker.app.models.content_draft import ContentDraft, DraftStatus, Platform
+from worker.app.models.content_draft import DraftStatus, Platform
 from worker.app.models.topic import TopicStatus
 from worker.generation.engine import generate_for_topic
 from worker.generation.llm_client import LLMGenerationError, LLMResponse
