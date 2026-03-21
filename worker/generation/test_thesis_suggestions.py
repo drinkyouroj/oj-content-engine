@@ -29,6 +29,7 @@ def _make_topic():
     }
     scored_signal.signal = signal
 
+    topic.signal = signal
     topic.scored_signal = scored_signal
     return topic
 

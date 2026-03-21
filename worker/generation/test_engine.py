@@ -53,6 +53,7 @@ def _make_topic(thesis: str | None = None, composite_score: float = 70.0) -> Mag
     }
     scored_signal.signal = signal
 
+    topic.signal = signal
     topic.scored_signal = scored_signal
     return topic
 
@@ -73,10 +74,10 @@ class TestGenerateForTopic:
     @pytest.mark.asyncio
     @patch("worker.generation.engine.select_exemplars", new_callable=AsyncMock, return_value=[])
     @patch("worker.generation.engine.detect_vertical", return_value="ai_politics")
-    async def test_generates_4_platform_drafts(
+    async def test_generates_substack_draft_only(
         self, _mock_vertical: MagicMock, _mock_exemplars: AsyncMock
     ) -> None:
-        """Verify 4 drafts are created, one per platform."""
+        """Verify only 1 Substack draft is created (Phase 1)."""
         topic = _make_topic(thesis="AI safety needs nuance")
         session = AsyncMock()
         llm_client = AsyncMock()
@@ -84,18 +85,10 @@ class TestGenerateForTopic:
 
         drafts = await generate_for_topic(topic, session, llm_client)
 
-        assert len(drafts) == 4
-        platforms = {d.platform for d in drafts}
-        assert platforms == {
-            Platform.SUBSTACK,
-            Platform.TWITTER,
-            Platform.LINKEDIN,
-            Platform.INSTAGRAM,
-        }
-        for draft in drafts:
-            assert draft.status == DraftStatus.DRAFT
-            assert draft.topic_id == topic.id
-            assert draft.content == "Generated content"
+        assert len(drafts) == 1
+        assert drafts[0].platform == Platform.SUBSTACK
+        assert drafts[0].status == DraftStatus.DRAFT
+        assert drafts[0].topic_id == topic.id
 
     @pytest.mark.asyncio
     @patch("worker.generation.engine.select_exemplars", new_callable=AsyncMock, return_value=[])
@@ -147,29 +140,21 @@ class TestGenerateForTopic:
     @pytest.mark.asyncio
     @patch("worker.generation.engine.select_exemplars", new_callable=AsyncMock, return_value=[])
     @patch("worker.generation.engine.detect_vertical", return_value="depin")
-    async def test_partial_failure_continues(
+    async def test_generation_failure_returns_empty_with_alert(
         self, _mock_vertical: MagicMock, _mock_exemplars: AsyncMock
     ) -> None:
-        """If one platform's LLM call fails, other platforms still generate."""
-        call_count = 0
-
-        async def _generate_side_effect(*args, **kwargs):
-            nonlocal call_count
-            call_count += 1
-            # Fail on the first call
-            if call_count == 1:
-                raise LLMGenerationError("Provider down")
-            return _make_llm_response()
-
+        """If Substack generation fails, empty list returned and SystemAlert created."""
         topic = _make_topic(thesis="Test thesis")
         session = AsyncMock()
         llm_client = AsyncMock()
-        llm_client.generate = AsyncMock(side_effect=_generate_side_effect)
+        llm_client.generate = AsyncMock(
+            side_effect=LLMGenerationError("Provider down")
+        )
 
         drafts = await generate_for_topic(topic, session, llm_client)
 
-        # One platform failed, so we should have 3 drafts
-        assert len(drafts) == 3
+        # Substack failed, so no drafts
+        assert len(drafts) == 0
         # A system alert should have been added
         session.add.assert_called()
         # Topic should still be marked as GENERATED

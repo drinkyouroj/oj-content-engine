@@ -34,7 +34,7 @@ class TestEnumValues:
     """Verify enum members match PRD specifications."""
 
     def test_signal_source_values(self):
-        assert set(s.value for s in SignalSource) == {"rss", "reddit", "hn", "twitter"}
+        assert set(s.value for s in SignalSource) == {"rss", "reddit", "hn", "twitter", "manual"}
 
     def test_scoring_status_values(self):
         assert set(s.value for s in ScoringStatus) == {"pending", "scored", "failed"}

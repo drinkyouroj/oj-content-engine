@@ -1,8 +1,8 @@
 """
-Unit tests for the Reddit poller.
+Unit tests for the Reddit RSS poller.
 
-Uses respx to mock httpx responses and test JSON parsing,
-velocity calculation, and error handling without network access.
+Uses respx to mock httpx responses with RSS/Atom XML and test feed parsing,
+signal extraction, and error handling without network access.
 """
 
 from __future__ import annotations
@@ -16,36 +16,46 @@ import respx
 from worker.discovery.reddit_poller import RedditPoller
 
 
-def _make_reddit_response(posts: list[dict] | None = None) -> dict:
-    """Build a mock Reddit JSON API response."""
-    if posts is None:
-        posts = []
-    return {
-        "data": {
-            "children": [{"data": post} for post in posts],
-        }
-    }
+def _make_rss_feed(entries: list[dict] | None = None, subreddit: str = "depin") -> str:
+    """Build a mock Reddit RSS (Atom) feed XML string."""
+    if entries is None:
+        entries = []
+    items = ""
+    for entry in entries:
+        title = entry.get("title", "")
+        link = entry.get("link", "")
+        published = entry.get("published", "2025-01-01T12:00:00+00:00")
+        summary = entry.get("summary", "")
+        author = entry.get("author", "testuser")
+        items += f"""
+        <entry>
+            <title>{title}</title>
+            <link href="{link}" />
+            <published>{published}</published>
+            <summary type="html">{summary}</summary>
+            <author><name>{author}</name></author>
+        </entry>"""
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+    <title>r/{subreddit} hot posts</title>
+    {items}
+</feed>"""
 
 
-def _make_post(
+def _make_entry(
     title: str = "Test Post",
-    permalink: str = "/r/depin/comments/abc123/test_post/",
-    selftext: str = "This is test content.",
-    ups: int = 100,
-    num_comments: int = 25,
-    created_utc: float | None = None,
+    link: str = "https://www.reddit.com/r/depin/comments/abc123/test_post/",
+    summary: str = "<p>This is test content.</p>",
+    author: str = "testuser",
+    published: str = "2025-01-01T12:00:00+00:00",
 ) -> dict:
-    """Build a mock Reddit post data dict."""
-    if created_utc is None:
-        # Default to 2 hours ago
-        created_utc = datetime.now(tz=timezone.utc).timestamp() - 7200
+    """Build a mock RSS entry dict for constructing feeds."""
     return {
         "title": title,
-        "permalink": permalink,
-        "selftext": selftext,
-        "ups": ups,
-        "num_comments": num_comments,
-        "created_utc": created_utc,
+        "link": link,
+        "summary": summary,
+        "author": author,
+        "published": published,
     }
 
 
@@ -55,9 +65,10 @@ class TestRedditPollerFetch:
     @pytest.mark.asyncio
     @respx.mock
     async def test_extracts_signals_from_subreddit(self) -> None:
-        post = _make_post()
-        respx.get("https://www.reddit.com/r/depin/hot.json?limit=25").mock(
-            return_value=httpx.Response(200, json=_make_reddit_response([post]))
+        entry = _make_entry()
+        rss_xml = _make_rss_feed([entry])
+        respx.get("https://www.reddit.com/r/depin/hot.rss").mock(
+            return_value=httpx.Response(200, text=rss_xml)
         )
 
         async with httpx.AsyncClient() as client:
@@ -68,39 +79,20 @@ class TestRedditPollerFetch:
         assert signals[0].title == "Test Post"
         assert signals[0].url == "https://www.reddit.com/r/depin/comments/abc123/test_post/"
         assert signals[0].body_preview == "This is test content."
-        assert "upvotes" in signals[0].source_metrics
-        assert "comments" in signals[0].source_metrics
-        assert "velocity" in signals[0].source_metrics
-
-    @pytest.mark.asyncio
-    @respx.mock
-    async def test_velocity_calculation(self) -> None:
-        # Post created exactly 2 hours ago with 100 upvotes => velocity ~50
-        two_hours_ago = datetime.now(tz=timezone.utc).timestamp() - 7200
-        post = _make_post(ups=100, created_utc=two_hours_ago)
-        respx.get("https://www.reddit.com/r/depin/hot.json?limit=25").mock(
-            return_value=httpx.Response(200, json=_make_reddit_response([post]))
-        )
-
-        async with httpx.AsyncClient() as client:
-            poller = RedditPoller(subreddits=["depin"], http_client=client)
-            signals = await poller.fetch()
-
-        velocity = signals[0].source_metrics["velocity"]
-        # Should be approximately 50 (100 ups / 2 hours)
-        assert 45 <= velocity <= 55
+        assert signals[0].source_metrics["subreddit"] == "depin"
+        assert signals[0].source_metrics["author"] == "testuser"
 
     @pytest.mark.asyncio
     @respx.mock
     async def test_multiple_subreddits(self) -> None:
-        post1 = _make_post(title="Post 1", permalink="/r/depin/comments/1/p1/")
-        post2 = _make_post(title="Post 2", permalink="/r/crypto/comments/2/p2/")
+        entry1 = _make_entry(title="Post 1", link="https://www.reddit.com/r/depin/comments/1/p1/")
+        entry2 = _make_entry(title="Post 2", link="https://www.reddit.com/r/crypto/comments/2/p2/")
 
-        respx.get("https://www.reddit.com/r/depin/hot.json?limit=25").mock(
-            return_value=httpx.Response(200, json=_make_reddit_response([post1]))
+        respx.get("https://www.reddit.com/r/depin/hot.rss").mock(
+            return_value=httpx.Response(200, text=_make_rss_feed([entry1], subreddit="depin"))
         )
-        respx.get("https://www.reddit.com/r/cryptocurrency/hot.json?limit=25").mock(
-            return_value=httpx.Response(200, json=_make_reddit_response([post2]))
+        respx.get("https://www.reddit.com/r/cryptocurrency/hot.rss").mock(
+            return_value=httpx.Response(200, text=_make_rss_feed([entry2], subreddit="cryptocurrency"))
         )
 
         async with httpx.AsyncClient() as client:
@@ -114,9 +106,10 @@ class TestRedditPollerFetch:
     @pytest.mark.asyncio
     @respx.mock
     async def test_skips_post_without_title(self) -> None:
-        post = _make_post(title="")
-        respx.get("https://www.reddit.com/r/depin/hot.json?limit=25").mock(
-            return_value=httpx.Response(200, json=_make_reddit_response([post]))
+        entry = _make_entry(title="")
+        rss_xml = _make_rss_feed([entry])
+        respx.get("https://www.reddit.com/r/depin/hot.rss").mock(
+            return_value=httpx.Response(200, text=rss_xml)
         )
 
         async with httpx.AsyncClient() as client:
@@ -128,7 +121,7 @@ class TestRedditPollerFetch:
     @pytest.mark.asyncio
     @respx.mock
     async def test_handles_api_error(self) -> None:
-        respx.get("https://www.reddit.com/r/depin/hot.json?limit=25").mock(
+        respx.get("https://www.reddit.com/r/depin/hot.rss").mock(
             return_value=httpx.Response(503)
         )
 
@@ -141,10 +134,11 @@ class TestRedditPollerFetch:
 
     @pytest.mark.asyncio
     @respx.mock
-    async def test_empty_selftext(self) -> None:
-        post = _make_post(selftext="")
-        respx.get("https://www.reddit.com/r/depin/hot.json?limit=25").mock(
-            return_value=httpx.Response(200, json=_make_reddit_response([post]))
+    async def test_empty_summary(self) -> None:
+        entry = _make_entry(summary="")
+        rss_xml = _make_rss_feed([entry])
+        respx.get("https://www.reddit.com/r/depin/hot.rss").mock(
+            return_value=httpx.Response(200, text=rss_xml)
         )
 
         async with httpx.AsyncClient() as client:
