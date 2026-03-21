@@ -9,7 +9,11 @@ task queue).
 ## Structure
 
 - `worker.py` — ARQ WorkerSettings class, job registry, Redis connection
-- Future: one file per pipeline stage (discovery_jobs.py, scoring_jobs.py, etc.)
+- `discovery_jobs.py` — Trend discovery jobs (RSS, Reddit, HN, Twitter pollers)
+- `scoring_jobs.py` — Two-pass signal scoring jobs
+- `triage_jobs.py` — Topic triage and hard-gate filtering jobs
+- `generation_jobs.py` — LLM content generation jobs
+- `notion_jobs.py` — Notion page staging and sync jobs
 
 ## How it fits in the pipeline
 

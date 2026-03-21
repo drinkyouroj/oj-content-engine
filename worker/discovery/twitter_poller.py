@@ -10,8 +10,6 @@ Inputs: TWITTER_BEARER_TOKEN environment variable (optional).
 Outputs: RawSignal instances with source=TWITTER persisted to the signals table.
 """
 
-# TODO: Add Nitter RSS fallback (PRD Section 2 - Fallback)
-
 from __future__ import annotations
 
 import logging

@@ -42,5 +42,8 @@ htmlcov/
 .vercel/
 .vercel
 
+# TypeScript
+tsconfig.tsbuildinfo
+
 # Superpowers
 .superpowers/

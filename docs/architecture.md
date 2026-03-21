@@ -55,8 +55,6 @@ _Last updated: 2026-03-19 | PRD Section 1_
 │  Routes:                                                            │
 │  /dashboard              — overview, badges, health                 │
 │  /dashboard/review/[id]  — topic review + thesis input              │
-│  /dashboard/content/[id] — draft preview (platform-specific)        │
-│  /dashboard/settings/exemplars — voice exemplar management          │
 │  /api/approve            — POST: approve draft                      │
 │  /api/reject             — POST: reject draft                       │
 │  /api/regenerate         — POST: trigger re-generation              │

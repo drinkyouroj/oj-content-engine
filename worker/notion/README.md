@@ -15,3 +15,9 @@ Output: Notion pages in the Second Brain database, page IDs stored back on Conte
 ## Environment variables
 - `NOTION_API_KEY` — Notion integration token
 - `NOTION_DB_ID` — Second Brain database ID
+
+## Running locally
+
+```bash
+cd worker && python -m pytest notion/ -v
+```
