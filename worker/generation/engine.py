@@ -153,6 +153,13 @@ async def generate_for_topic(
     score_breakdown = topic.scored_signal.score_breakdown if topic.scored_signal else {}
     thesis = topic.thesis
 
+    # Collect source URLs for citation
+    source_urls: list[str] = []
+    if signal.source_metrics and isinstance(signal.source_metrics, dict):
+        source_urls = signal.source_metrics.get("source_urls", [])
+    if not source_urls and signal.url:
+        source_urls = [signal.url]
+
     # Step 1: Detect vertical
     vertical = detect_vertical(title, body)
     topic.vertical = vertical
@@ -183,6 +190,7 @@ async def generate_for_topic(
             score_breakdown=score_breakdown,
             thesis=thesis,
             exemplars=exemplar_texts,
+            source_urls=source_urls,
         )
 
         # 3d: Call LLM

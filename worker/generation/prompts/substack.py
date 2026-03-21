@@ -9,7 +9,7 @@ Exports:
 """
 from __future__ import annotations
 
-from worker.generation.prompts._shared import format_topic_context
+from worker.generation.prompts._shared import format_source_urls, format_topic_context
 
 
 def build_prompt(
@@ -18,11 +18,12 @@ def build_prompt(
     score_breakdown: dict[str, int],
     thesis: str | None,
     exemplars: list[str],
+    source_urls: list[str] | None = None,
 ) -> str:
     """Assemble a Substack article generation prompt.
 
-    Combines topic context, optional thesis, optional voice exemplars, and
-    platform-specific structural instructions into a single user-role prompt.
+    Combines topic context, source URLs for citation, optional thesis,
+    optional voice exemplars, and platform-specific structural instructions.
 
     Args:
         topic_title: Title of the triaged topic.
@@ -30,6 +31,7 @@ def build_prompt(
         score_breakdown: Dict mapping rubric dimensions to integer scores (0-100).
         thesis: Human-supplied thesis angle, or None for AI-originated content.
         exemplars: List of exemplar content strings for voice calibration.
+        source_urls: Real URLs to use for citations. Only these may be cited.
 
     Returns:
         Formatted prompt string ready to pass as the user message.
@@ -37,6 +39,10 @@ def build_prompt(
     sections: list[str] = []
 
     sections.append(format_topic_context(topic_title, topic_body, score_breakdown))
+
+    if source_urls:
+        sections.append(format_source_urls(source_urls))
+
     sections.append(_format_thesis(thesis))
 
     if exemplars:
@@ -131,8 +137,11 @@ SOURCES AND FOOTNOTES (MANDATORY):
 - Every statistic, data point, or factual claim MUST have an inline footnote \
 marker like [1], [2], [3] in the article body where the claim appears.
 - The article MUST end with a SOURCES section listing every footnoted source \
-with its full URL. If you cannot find a real source URL, write [SOURCE NEEDED] \
-instead of fabricating one. Do NOT skip this section.
+with its full URL.
+- ONLY cite sources whose URLs were provided to you in the TOPIC or SOURCE \
+URLS sections above. Do NOT invent, guess, or hallucinate URLs. If you \
+cannot attribute a claim to a provided source, either rephrase the claim as \
+your own analysis (no footnote needed) or omit it. Never write [SOURCE NEEDED].
 - Example inline usage: "Stablecoin volume hit $46 trillion annually.[1]"
 - The SOURCES section is NOT optional. An article without sources is incomplete.
 
@@ -148,4 +157,4 @@ TEMPLATE: <template name>
 SOURCES:
 [1] Description — https://example.com/source-url
 [2] Description — https://example.com/another-source
-[3] Description — [SOURCE NEEDED]"""
+[3] Description — https://example.com/third-source"""

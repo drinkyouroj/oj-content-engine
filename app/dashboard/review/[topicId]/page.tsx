@@ -29,6 +29,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import { AutoRefresh } from "@/components/auto-refresh";
 
 export const dynamic = "force-dynamic";
 
@@ -200,6 +201,9 @@ export default async function ReviewPage({
           </p>
         )}
       </div>
+
+      {/* ---- Auto-refresh while generating ---- */}
+      <AutoRefresh status={topic.status} />
 
       {/* ---- Score Breakdown ---- */}
       <section>
